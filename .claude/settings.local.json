@@ -4,7 +4,14 @@
       "PowerShell(Get-ChildItem -Path \"C:\\\\nodejs-apex-oracle\\\\_bmad\" -Recurse -Depth 3 | Select-Object FullName, @{Name=\"Type\"; Expression={if\\($_.PSIsContainer\\){\"DIR\"}else{\"FILE\"}}} | Format-Table -AutoSize)",
       "PowerShell(Get-ChildItem -Path \"C:\\\\nodejs-apex-oracle\\\\.claude\\\\get-shit-done\" -Recurse -Depth 3 | Select-Object FullName, @{Name=\"Type\"; Expression={if\\($_.PSIsContainer\\){\"DIR\"}else{\"FILE\"}}} | Format-Table -AutoSize)",
       "PowerShell(@\\(Get-ChildItem -Path \"C:\\\\nodejs-apex-oracle\" -Force | Select-Object Name\\) | ForEach-Object { Write-Host $_.Name })",
-      "PowerShell(cd \"C:\\\\Users\\\\PC\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\skill-creator\\\\unknown\\\\skills\\\\skill-creator\"; $env:PYTHONUTF8=\"1\"; python -m scripts.aggregate_benchmark \"C:\\\\Users\\\\PC\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\skill-creator\\\\unknown\\\\skills\\\\apex-nodejs-chat-dev-workspace\\\\iteration-1\" --skill-name \"apex-nodejs-chat-dev\" 2>&1)"
+      "PowerShell(cd \"C:\\\\Users\\\\PC\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\skill-creator\\\\unknown\\\\skills\\\\skill-creator\"; $env:PYTHONUTF8=\"1\"; python -m scripts.aggregate_benchmark \"C:\\\\Users\\\\PC\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\skill-creator\\\\unknown\\\\skills\\\\apex-nodejs-chat-dev-workspace\\\\iteration-1\" --skill-name \"apex-nodejs-chat-dev\" 2>&1)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:node-oracledb.readthedocs.io)",
+      "WebFetch(domain:blogs.oracle.com)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:oracle-base.com)",
+      "WebFetch(domain:technology.amis.nl)",
+      "WebFetch(domain:gist.github.com)"
     ]
   },
   "enabledPlugins": {
