@@ -30,11 +30,23 @@ async function main() {
     console.log('[CQN] Kết nối OK\n');
 
     console.log('[CQN] Đang đăng ký subscription trên USER_NOTIFICATIONS...');
+    // Oracle 19.3: clientInitiated not supported — Oracle calls back to CQN_HOST:CQN_PORT
+    const callbackIp   = process.env.CQN_HOST;
+    const callbackPort = parseInt(process.env.CQN_PORT, 10) || 3141;
+
+    if (!callbackIp) {
+      console.error('[Error] Set CQN_HOST in .env (Server B IP that Oracle can reach)');
+      process.exit(1);
+    }
+
+    console.log(`[CQN] Registering callback to ${callbackIp}:${callbackPort} ...`);
+
     await cqnConn.subscribe('test_watcher', {
-      sql:             `SELECT ano_id, aus_id FROM user_notifications WHERE deleted = 'N'`,
-      clientInitiated: true,
-      qos:             oracledb.SUBSCR_QOS_QUERY | oracledb.SUBSCR_QOS_ROWIDS,
-      callback:        onMessage,
+      sql:       `SELECT ano_id, aus_id FROM user_notifications WHERE deleted = 'N'`,
+      ipAddress: callbackIp,
+      port:      callbackPort,
+      qos:       oracledb.SUBSCR_QOS_QUERY | oracledb.SUBSCR_QOS_ROWIDS,
+      callback:  onMessage,
     });
 
     console.log('[CQN] Subscription đăng ký thành công!');

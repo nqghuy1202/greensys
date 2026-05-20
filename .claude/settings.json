@@ -101,5 +101,12 @@
       }
     ]
   },
-  "enabledPlugins": {}
+  "enabledPlugins": {},
+  "env": {
+    "SQLCL_CONNECTION": "DEV24",
+    "APEX_APP_ID": "100",
+    "APEX_WORKSPACE": "DEV24",
+    "DB_USER": "DEV24",
+    "DB_CONNECT_STRING": "172.25.xx.xx:1521/FREEPDB1"
+  }
 }

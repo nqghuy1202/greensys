@@ -11,10 +11,24 @@
       "WebFetch(domain:medium.com)",
       "WebFetch(domain:oracle-base.com)",
       "WebFetch(domain:technology.amis.nl)",
-      "WebFetch(domain:gist.github.com)"
+      "WebFetch(domain:gist.github.com)",
+      "Bash(gh repo *)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Skill(anthropic-skills:oracle-apex-expert)",
+      "Skill(anthropic-skills:oracle-apex-expert:*)",
+      "Skill(apex)",
+      "Skill(apex:*)",
+      "Bash(sql -V)",
+      "Bash(where sql *)",
+      "Bash(where sqlcl *)",
+      "Read(//mnt/c/SQLcl/**)",
+      "Read(//mnt/c/Program Files/SQLcl/**)"
     ]
   },
   "enabledPlugins": {
     "skill-creator@claude-plugins-official": true
+  },
+  "env": {
+    "SQLCL_CONNECTION": "dev24/dev24gic001@jdbc:oracle:thin:@//172.25.10.38:1521/orclpdb1"
   }
 }
