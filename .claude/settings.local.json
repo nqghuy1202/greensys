@@ -1,4 +1,7 @@
 {
+  "env": {
+    "SQLCL_CONNECTION": "dev24/dev24gic001@jdbc:oracle:thin:@//172.25.10.38:1521/orclpdb1"
+  },
   "permissions": {
     "allow": [
       "PowerShell(Get-ChildItem -Path \"C:\\\\nodejs-apex-oracle\\\\_bmad\" -Recurse -Depth 3 | Select-Object FullName, @{Name=\"Type\"; Expression={if\\($_.PSIsContainer\\){\"DIR\"}else{\"FILE\"}}} | Format-Table -AutoSize)",
@@ -22,13 +25,12 @@
       "Bash(where sql *)",
       "Bash(where sqlcl *)",
       "Read(//mnt/c/SQLcl/**)",
-      "Read(//mnt/c/Program Files/SQLcl/**)"
+      "Read(//mnt/c/Program Files/SQLcl/**)",
+      "Bash(node -e ' *)",
+      "Bash(node *)"
     ]
   },
   "enabledPlugins": {
     "skill-creator@claude-plugins-official": true
-  },
-  "env": {
-    "SQLCL_CONNECTION": "dev24/dev24gic001@jdbc:oracle:thin:@//172.25.10.38:1521/orclpdb1"
   }
 }

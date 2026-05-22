@@ -1,0 +1,71 @@
+// SVG icons — Lucide-style stroke icons
+// All icons are 16px by default; pass size prop to change
+const Ic = ({ d, size = 16, fill, viewBox = '0 0 24 24', sw = 1.75, children, ...rest }) => (
+  <svg width={size} height={size} viewBox={viewBox} fill={fill || 'none'} stroke={fill ? 'none' : 'currentColor'}
+       strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" {...rest}>
+    {d ? <path d={d} /> : children}
+  </svg>
+);
+
+const Icons = {
+  back:    (p) => <Ic {...p} d="M19 12H5M12 19l-7-7 7-7" />,
+  search:  (p) => <Ic {...p}><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></Ic>,
+  x:       (p) => <Ic {...p} d="M18 6L6 18M6 6l12 12" />,
+  chev_d:  (p) => <Ic {...p} d="M6 9l6 6 6-6" />,
+  chev_r:  (p) => <Ic {...p} d="M9 6l6 6-6 6" />,
+  chev_l:  (p) => <Ic {...p} d="M15 6l-6 6 6 6" />,
+  send:    (p) => <Ic {...p} d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />,
+  attach:  (p) => <Ic {...p} d="M21.4 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.48l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />,
+  emoji:   (p) => <Ic {...p}><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></Ic>,
+  at:      (p) => <Ic {...p}><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></Ic>,
+  bold:    (p) => <Ic {...p} d="M6 4h8a4 4 0 0 1 0 8H6zM6 12h9a4 4 0 0 1 0 8H6z" />,
+  italic:  (p) => <Ic {...p} d="M19 4h-9M14 20H5M15 4L9 20" />,
+  code:    (p) => <Ic {...p} d="M16 18l6-6-6-6M8 6l-6 6 6 6" />,
+  list:    (p) => <Ic {...p} d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />,
+  link:    (p) => <Ic {...p} d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />,
+  doc:     (p) => <Ic {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></Ic>,
+  doc_plus:(p) => <Ic {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M12 11v6M9 14h6"/></Ic>,
+  pin:     (p) => <Ic {...p} d="M12 17v5M5 9l7-7 7 7-3 3v4l-4 1-4-1v-4z" />,
+  reply:   (p) => <Ic {...p} d="M9 17L4 12l5-5M4 12h12a4 4 0 0 1 4 4v4" />,
+  forward: (p) => <Ic {...p} d="M15 17l5-5-5-5M20 12H8a4 4 0 0 0-4 4v4" />,
+  more_v:  (p) => <Ic {...p}><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></Ic>,
+  more_h:  (p) => <Ic {...p}><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></Ic>,
+  smile_p: (p) => <Ic {...p}><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01M19 9h2M20 8v2"/></Ic>,
+  check:   (p) => <Ic {...p} d="M20 6L9 17l-5-5" />,
+  check_2: (p) => <Ic {...p} d="M18 6L7 17l-5-5M22 10l-7.5 7.5L13 16" />,
+  phone:   (p) => <Ic {...p} d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />,
+  video:   (p) => <Ic {...p}><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M23 7l-7 5 7 5z"/></Ic>,
+  info:    (p) => <Ic {...p}><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></Ic>,
+  bell:    (p) => <Ic {...p} d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />,
+  bell_off:(p) => <Ic {...p} d="M13.73 21a2 2 0 0 1-3.46 0M18 8c0-1.7-.5-3.3-1.4-4.6M3 3l18 18M9.2 5.2A6 6 0 0 0 6 8c0 7-3 9-3 9h13" />,
+  user:    (p) => <Ic {...p}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></Ic>,
+  users:   (p) => <Ic {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></Ic>,
+  hash:    (p) => <Ic {...p} d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18" />,
+  plus:    (p) => <Ic {...p} d="M12 5v14M5 12h14" />,
+  edit:    (p) => <Ic {...p} d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />,
+  trash:   (p) => <Ic {...p} d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />,
+  download:(p) => <Ic {...p} d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />,
+  upload:  (p) => <Ic {...p} d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />,
+  warehouse:(p)=> <Ic {...p}><path d="M3 21V8l9-5 9 5v13M3 21h18M9 21v-6h6v6"/></Ic>,
+  sales:   (p) => <Ic {...p} d="M3 3v18h18M7 14l4-4 4 4 6-6" />,
+  accounting:(p)=> <Ic {...p}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h6"/></Ic>,
+  megaphone:(p)=> <Ic {...p} d="M3 11l18-8v18l-18-8v-2zM11 11v6" />,
+  shield:  (p) => <Ic {...p} d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />,
+  zap:     (p) => <Ic {...p} d="M13 2L3 14h9l-1 8 10-12h-9z" />,
+  inbox:   (p) => <Ic {...p}><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></Ic>,
+  filter:  (p) => <Ic {...p} d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />,
+  star:    (p) => <Ic {...p} d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />,
+  calendar:(p) => <Ic {...p}><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></Ic>,
+  package: (p) => <Ic {...p} d="M21 16V8a2 2 0 0 0-1-1.73L13 2.27a2 2 0 0 0-2 0L4 6.27A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4.27a2 2 0 0 0 2 0l7-4.27A2 2 0 0 0 21 16zM3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" />,
+  refresh: (p) => <Ic {...p} d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />,
+  archive: (p) => <Ic {...p}><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></Ic>,
+  history: (p) => <Ic {...p}><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></Ic>,
+  alert:   (p) => <Ic {...p}><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></Ic>,
+  copy:    (p) => <Ic {...p}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></Ic>,
+  print:   (p) => <Ic {...p} d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z" />,
+  save:    (p) => <Ic {...p} d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8" />,
+  panel_r: (p) => <Ic {...p}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/></Ic>,
+  smile:   (p) => <Ic {...p}><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></Ic>,
+};
+
+window.Icons = Icons;
