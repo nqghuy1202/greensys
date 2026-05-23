@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 `nodejs-apex-oracle` is a Node.js 22 middleware server on **Server B** that bridges Oracle Database (Server A) with Oracle APEX 24.2 browser clients. It handles two independent features:
-1. **Notification system** — CQN-triggered long-poll for bell/notification menu
+1. **Notification system** — CQN-triggered WebSocket push for bell/notification menu (nginx WSS proxy)
 2. **Chat module** — real-time messaging with long-poll events, typing indicators, online status
 
 ## System Architecture
@@ -13,6 +13,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 Browser (APEX client)
   │  apex.server.process(...)  — AJAX over HTTPS to APEX
+  │  wss://172.25.10.38/ws     — WebSocket direct to nginx (notification only)
+  ▼
+Nginx on Server B :443 (SSL proxy, /etc/nginx/conf.d/notify-ws.conf)
+  │  ws://localhost:3410/ws    — proxies WSS → WS into Node.js
   ▼
 Server A — Oracle DB + APEX 24.2 (192.168.1.10)
   │  UTL_HTTP proxy → Node.js endpoints (APEX bridges HTTPS→HTTP)
@@ -21,11 +25,14 @@ Server A — Oracle DB + APEX 24.2 (192.168.1.10)
   ▼
 Server B — Node.js 22 (172.25.10.38)
   chat-server/server.js  listening on PORT (default 3410)
-    ├── /api/wait/:aus_id        (notification long-poll)
-    └── /api/chat/*              (chat module — chat.js router)
+    ├── GET  /ws                  (notification WebSocket — upgraded by nginx)
+    ├── /api/wait/:aus_id         (notification long-poll — kept for compatibility)
+    └── /api/chat/*               (chat module — chat.js router)
 ```
 
-**Why APEX proxy:** Browser cannot call `http://172.25.x.x:3410` directly (Mixed Content on HTTPS). `apex.server.process` goes over HTTPS; APEX calls Node.js via `UTL_HTTP` internally.
+**Why APEX proxy for chat:** Browser cannot call `http://172.25.x.x:3410` directly (Mixed Content on HTTPS). `apex.server.process` goes over HTTPS; APEX calls Node.js via `UTL_HTTP` internally.
+
+**Why nginx for notification WebSocket:** WebSocket from HTTPS page requires `wss://`. Nginx provides SSL termination so Node.js stays plain HTTP.
 
 ## Running the Server
 
@@ -45,6 +52,12 @@ cd /root && pm2 restart chat-server      # PM2 restart (must cd first)
 [Server] Listening on 0.0.0.0:3410
 ```
 
+**When a browser connects WebSocket:**
+```
+[WS] Connected aus_id=123 (clients=1)
+[WS] Disconnected aus_id=123
+```
+
 ## Test Commands
 
 ```bash
@@ -60,7 +73,8 @@ curl "http://localhost:3410/api/chat/conversations/<aus_id>"
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/health` | Health check |
-| GET | `/api/wait/:aus_id` | Notification long-poll (25s) |
+| WS | `/ws?aus_id=` | Notification WebSocket (persistent push) |
+| GET | `/api/wait/:aus_id` | Notification long-poll (25s, kept for compatibility) |
 | GET | `/api/notify/:aus_id` | Manual notification trigger |
 | GET | `/api/chat/conversations/:aus_id` | Sidebar list |
 | GET | `/api/chat/messages/:conv_id` | Message history |
@@ -91,7 +105,7 @@ Oracle's `UTL_HTTP.READ_TEXT` re-interprets UTF-8 bytes using the DB charset (WE
 
 **Do not use regex with Unicode range literals** when editing this middleware — the Edit tool may garble multi-byte chars. Use `charCodeAt()` loops instead (as currently implemented).
 
-## Notification System (CQN)
+## Notification System (CQN + WebSocket)
 
 - CQN uses `ipAddress/port` callback — `clientInitiated: true` requires Oracle 19.4+, not available
 - CQN connection has `events: true`; DB queries use **separate pool connection** — never query on CQN connection
@@ -99,6 +113,22 @@ Oracle's `UTL_HTTP.READ_TEXT` re-interprets UTF-8 bytes using the DB charset (WE
 - When Oracle delivers >80 ROWIDs in one transaction it sends none — `handleFullScan()` is fallback
 - `rowidCache` (Map) loaded from DB on startup; INSERT adds, DELETE reads-and-removes
 - `table.operation & oracledb.CQN_OPCODE_DELETE` distinguishes DELETE from INSERT
+
+**WebSocket push flow:** CQN fires → `notifyWaiters(ausId)` → iterates `wsClients.get(ausId)` Set → `ws.send()` to each open connection. No browser loop needed — server pushes on demand.
+
+**`wsClients`** Map in `server.js`: `aus_id(string) → Set<ws>` — supports multiple tabs per user. Cleaned up on `ws.close`.
+
+## Nginx SSL Proxy (Server B)
+
+Config: `/etc/nginx/conf.d/notify-ws.conf`
+- Listens on `:443 ssl` — cert at `/etc/pki/tls/certs/notify-ws.crt`, key at `/etc/pki/tls/private/notify-ws.key`
+- `location /ws` proxies to `http://localhost:3410` with WebSocket upgrade headers
+- `proxy_read_timeout 3600s` — keeps WebSocket connections alive up to 1 hour
+
+```bash
+nginx -t                  # validate config
+systemctl reload nginx    # apply changes
+```
 
 ## Chat Module Architecture
 
@@ -245,6 +275,36 @@ BEGIN DBMS_CQ_NOTIFICATION.DEREGISTER(
 END;
 /
 ```
+
+## APEX Theme global.js (Notification WebSocket)
+
+Paste into `Shared Components → Themes → Edit → JavaScript` (runs on every page):
+
+```javascript
+(function () {
+    'use strict';
+    if (window._notifyWs) return;  // guard: 1 connection per session
+    $(document).ready(function () {
+        var ausId = $v('P0_AUS_ID');
+        if (!ausId) return;
+        function connect() {
+            var ws = new WebSocket('wss://172.25.10.38/ws?aus_id=' + ausId);
+            window._notifyWs = ws;
+            ws.onmessage = function (event) {
+                var data = JSON.parse(event.data);
+                if (data.status === 'new_notification') {
+                    apex.region('notification-menu').refresh();
+                }
+            };
+            ws.onclose = function () { window._notifyWs = null; setTimeout(connect, 5000); };
+            ws.onerror = function () { ws.close(); };
+        }
+        connect();
+    });
+})();
+```
+
+**`P0_AUS_ID`** is a Page 0 hidden item (has a DOM element, so `$v()` works). Do not use `G_AUS_ID` Application Item here — `$v('G_AUS_ID')` always returns `""`.
 
 ## BMad Development Workflow
 

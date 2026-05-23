@@ -5,6 +5,7 @@ const express    = require('express');
 const http       = require('http');
 const cors       = require('cors');
 const oracledb   = require('oracledb');
+const { WebSocketServer } = require('ws');
 const { startCQN }   = require('./cqn');
 const { router: chatRouter } = require('./chat');
 
@@ -12,6 +13,28 @@ oracledb.initOracleClient();
 
 const app    = express();
 const server = http.createServer(app);
+
+// WebSocket clients cho notification bell: aus_id → Set<ws>
+const wsClients = new Map();
+
+const wss = new WebSocketServer({ server, path: '/ws' });
+wss.on('connection', (ws, req) => {
+    const ausId = new URL(req.url, 'http://localhost').searchParams.get('aus_id');
+    if (!ausId) { ws.close(); return; }
+
+    if (!wsClients.has(ausId)) wsClients.set(ausId, new Set());
+    wsClients.get(ausId).add(ws);
+    console.log('[WS] Connected aus_id=%s (clients=%d)', ausId, wsClients.get(ausId).size);
+
+    ws.on('close', () => {
+        const set = wsClients.get(ausId);
+        if (set) {
+            set.delete(ws);
+            if (!set.size) wsClients.delete(ausId);
+        }
+        console.log('[WS] Disconnected aus_id=%s', ausId);
+    });
+});
 
 app.use(cors());
 app.use(express.json());
@@ -37,13 +60,27 @@ app.use((req, res, next) => {
 const waiters = {};
 
 function notifyWaiters(ausId) {
+    // Long-poll (giữ nguyên cho chat module)
     const list = waiters[ausId] || [];
     list.forEach(({ res, timeout }) => {
         clearTimeout(timeout);
         res.json({ status: 'new_notification' });
     });
     waiters[ausId] = [];
-    if (list.length) console.log('[Notify] Sent to aus_id=%s (%d waiter(s))', ausId, list.length);
+
+    // WebSocket push
+    const wsSet = wsClients.get(String(ausId));
+    if (wsSet) {
+        const msg = JSON.stringify({ status: 'new_notification' });
+        for (const ws of wsSet) {
+            if (ws.readyState === ws.OPEN) ws.send(msg);
+        }
+    }
+
+    const wsCount = wsSet ? wsSet.size : 0;
+    if (list.length || wsCount) {
+        console.log('[Notify] aus_id=%s — long-poll=%d ws=%d', ausId, list.length, wsCount);
+    }
 }
 
 async function initDB() {
