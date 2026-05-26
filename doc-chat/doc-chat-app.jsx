@@ -3,11 +3,10 @@
 
 const { useState, useEffect, useRef, useCallback } = React;
 
-const MODAL_PAGE_ID = 10022710201;
 const CURRENT_AUS_ID = Number(window.CHAT_AUS_ID || 0);
 const POLL_BACKOFF_MAX = 30000;
 
-// Call a page-level Ajax Callback on the modal page (doc-chat callbacks)
+// Call an Application Process (doc-chat callbacks are Application Processes, not page-level)
 function apexCall(processName, params = {}) {
   return new Promise((resolve, reject) => {
     apex.server.process(processName,
@@ -20,32 +19,15 @@ function apexCall(processName, params = {}) {
       },
       {
         dataType: 'json',
-        pageId:   MODAL_PAGE_ID,
         success:  resolve,
-        error:    (_, err) => reject(new Error(err || 'APEX error'))
+        error:    (jqXHR, err) => reject(new Error(jqXHR.responseText || err || 'APEX error'))
       }
     );
   });
 }
 
-// Call an Application Process (no pageId) — for shared data like contact list
-function apexCallApp(processName, params = {}) {
-  return new Promise((resolve, reject) => {
-    apex.server.process(processName,
-      {
-        x01: String(params.x01 !== undefined ? params.x01 : ''),
-        x02: String(params.x02 !== undefined ? params.x02 : ''),
-        x03: String(params.x03 !== undefined ? params.x03 : ''),
-        x04: String(params.x04 !== undefined ? params.x04 : ''),
-      },
-      {
-        dataType: 'json',
-        success:  resolve,
-        error:    (_, err) => reject(new Error(err || 'APEX error'))
-      }
-    );
-  });
-}
+// Alias kept for backward compatibility — same as apexCall (Application Process, no pageId needed)
+const apexCallApp = apexCall;
 
 function fmtPreviewTime(dateStr) {
   if (!dateStr) return '';

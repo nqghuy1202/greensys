@@ -1,15 +1,18 @@
 -- ===========================================================
 -- DOC CHAT MODAL — APEX Ajax Callbacks
--- Tất cả tạo là PAGE-LEVEL Ajax Callback trên Modal Page ID: 10022710201
+-- Tất cả tạo là APPLICATION PROCESS (Shared Components → Application Processes)
+-- type: Ajax Callback — KHÔNG phải page-level callback.
 -- ===========================================================
 --
--- QUAN TRỌNG: Ghi lại số Modal Page vào dòng trên sau khi tạo page.
+-- LÝ DO: apex.server.process() với pageId không định tuyến đúng đến page-level
+-- callback khi gọi từ trang khác. Application Process callable từ mọi trang,
+-- không cần pageId, và là pattern chuẩn cho toàn bộ hệ thống chat.
+--
 -- Callbacks relay → Node.js dùng :APP_USER để lấy aus_id (an toàn hơn :G_AUS_ID).
 -- Callbacks đọc DB trực tiếp dùng aus_id từ g_x01 hoặc không cần auth.
 --
--- LOAD ORDER trong doc-chat-app.jsx (MODAL_PAGE_ID = 10022710201):
---   apexCall() → apex.server.process(..., { pageId: 10022710201 })
---   apexCallApp() → apex.server.process(...) không có pageId (Application Process)
+-- LOAD ORDER trong doc-chat-app.jsx:
+--   apexCall() → apex.server.process(...) không có pageId (Application Process)
 -- ===========================================================
 
 
@@ -298,11 +301,12 @@ BEGIN
   END IF;
 
   -- Tạo hội thoại mới
+  -- Lấy NEXTVAL trước vào biến để tránh ORA-22816 (RETURNING INTO không support trong Application Process)
+  l_conv_id := CONV_SEQ.NEXTVAL;
   INSERT INTO CHAT_CONVERSATIONS
     (conv_id, conv_type, name, aus_id, doc_type, doc_no, created_by, create_date)
   VALUES
-    (CONV_SEQ.NEXTVAL, l_conv_type, l_name, l_aus_id, l_doc_type, l_doc_no, :APP_USER, SYSTIMESTAMP)
-  RETURNING conv_id INTO l_conv_id;
+    (l_conv_id, l_conv_type, l_name, l_aus_id, l_doc_type, l_doc_no, :APP_USER, SYSTIMESTAMP);
 
   -- Người tạo: is_admin=1
   INSERT INTO CHAT_PARTICIPANTS (conv_id, aus_id, is_admin, created_by, create_date)
