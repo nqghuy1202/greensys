@@ -6,13 +6,15 @@ const router = express.Router();
 
 // ─── In-memory state ─────────────────────────────────────────────────────────
 // Mỗi user chỉ có 1 waiter tại 1 thời điểm (tab cuối cùng thắng)
-const chatWaiters = new Map();   // aus_id(string) → { res, timeout }
-const typingState = new Map();   // `${conv_id}:${aus_id}` → expireHandle
-const onlineUsers = new Map();   // aus_id(string) → Date.now()
+const chatWaiters      = new Map();   // aus_id(string) → { res, timeout }
+const typingState      = new Map();   // `${conv_id}:${aus_id}` → expireHandle
+const onlineUsers      = new Map();   // aus_id(string) → Date.now()
+const participantCache = new Map();   // conv_id(number) → { ausIds: number[], expiresAt: number }
 
-const POLL_TIMEOUT = 25_000;   // 25s — long-poll timeout
-const TYPING_TTL   =  4_000;   // 4s  — tự xóa typing nếu không có heartbeat
-const ONLINE_TTL   = 35_000;   // 35s — đánh dấu offline nếu không heartbeat
+const POLL_TIMEOUT          = 25_000;   // 25s — long-poll timeout
+const TYPING_TTL            =  4_000;   // 4s  — tự xóa typing nếu không có heartbeat
+const ONLINE_TTL            = 35_000;   // 35s — đánh dấu offline nếu không heartbeat
+const PARTICIPANT_CACHE_TTL = 60_000;   // 60s — cache participant list mỗi conv
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
 
@@ -41,8 +43,11 @@ function deliverToUser(ausId, payload) {
   chatWaiters.delete(key);
 }
 
-// Đẩy event tới tất cả thành viên của conv, trừ excludeAusId
-async function deliverToConv(convId, payload, excludeAusId) {
+// Participant list với 60s cache — tránh query DB mỗi lần typing/read event
+async function getParticipants(convId) {
+  const cached = participantCache.get(convId);
+  if (cached && cached.expiresAt > Date.now()) return cached.ausIds;
+
   const rows = await withConn(async conn => {
     const r = await conn.execute(
       `SELECT aus_id FROM CHAT_PARTICIPANTS WHERE conv_id = :conv_id`,
@@ -51,8 +56,16 @@ async function deliverToConv(convId, payload, excludeAusId) {
     );
     return r.rows;
   });
-  for (const row of rows) {
-    if (row.AUS_ID !== excludeAusId) deliverToUser(row.AUS_ID, payload);
+  const ausIds = rows.map(r => r.AUS_ID);
+  participantCache.set(convId, { ausIds, expiresAt: Date.now() + PARTICIPANT_CACHE_TTL });
+  return ausIds;
+}
+
+// Đẩy event tới tất cả thành viên của conv, trừ excludeAusId
+async function deliverToConv(convId, payload, excludeAusId) {
+  const ausIds = await getParticipants(convId);
+  for (const ausId of ausIds) {
+    if (ausId !== excludeAusId) deliverToUser(ausId, payload);
   }
 }
 
@@ -101,6 +114,7 @@ router.get('/conversations/:aus_id', async (req, res) => {
          FROM CHAT_CONVERSATIONS c
          JOIN CHAT_PARTICIPANTS   p
            ON p.conv_id = c.conv_id AND p.aus_id = :aus_id
+         WHERE c.doc_type IS NULL
          ORDER BY c.last_msg_date DESC NULLS LAST`,
         { aus_id: ausId },
         { outFormat: oracledb.OUT_FORMAT_OBJECT }
@@ -110,6 +124,71 @@ router.get('/conversations/:aus_id', async (req, res) => {
     res.json({ conversations: normalize(rows) });
   } catch (err) {
     console.error('[Chat] GET /conversations:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/chat/doc-conversations ─────────────────────────────────────────
+// Danh sách hội thoại gắn với một chứng từ cụ thể
+// Query: ?doc_type=SO&doc_no=SO-2601%2F010&aus_id=123
+router.get('/doc-conversations', async (req, res) => {
+  const { doc_type, doc_no, aus_id } = req.query;
+  if (!doc_type || !doc_no || !aus_id) {
+    return res.status(400).json({ error: 'doc_type, doc_no và aus_id là bắt buộc' });
+  }
+  const ausId = Number(aus_id);
+  try {
+    const rows = await withConn(async conn => {
+      const r = await conn.execute(
+        `SELECT
+           c.conv_id,
+           c.conv_type,
+           c.doc_type,
+           c.doc_no,
+           c.last_msg_preview,
+           c.last_msg_date,
+           c.pinned_msg_id,
+           p.is_admin,
+           p.last_read_msg_id,
+           CASE c.conv_type
+             WHEN 'CHANNEL' THEN c.name
+             ELSE (SELECT NVL(e2.full_name, 'Unknown')
+                   FROM   CHAT_PARTICIPANTS p2
+                   JOIN   APP_USERS  u2 ON u2.aus_id = p2.aus_id
+                   JOIN   EMPLOYEES  e2 ON e2.emp_id = u2.emp_id
+                   WHERE  p2.conv_id = c.conv_id AND p2.aus_id != :aus_id
+                   FETCH FIRST 1 ROW ONLY)
+           END AS display_name,
+           CASE c.conv_type
+             WHEN 'DM' THEN (SELECT p2.aus_id
+                             FROM   CHAT_PARTICIPANTS p2
+                             WHERE  p2.conv_id = c.conv_id AND p2.aus_id != :aus_id
+                             FETCH FIRST 1 ROW ONLY)
+           END AS dm_partner_aus_id,
+           (SELECT COUNT(*)
+            FROM   CHAT_MESSENGERS m
+            WHERE  m.conv_id     = c.conv_id
+              AND  m.delete_date IS NULL
+              AND  m.msg_id      > NVL(p.last_read_msg_id, 0)
+           ) AS unread_count,
+           (SELECT COUNT(*)
+            FROM   CHAT_PARTICIPANTS p2
+            WHERE  p2.conv_id = c.conv_id
+           ) AS member_count
+         FROM CHAT_CONVERSATIONS c
+         JOIN CHAT_PARTICIPANTS   p
+           ON p.conv_id = c.conv_id AND p.aus_id = :aus_id
+         WHERE c.doc_type = :doc_type
+           AND c.doc_no   = :doc_no
+         ORDER BY c.last_msg_date DESC NULLS LAST`,
+        { aus_id: ausId, doc_type, doc_no },
+        { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+      return r.rows;
+    });
+    res.json({ conversations: normalize(rows) });
+  } catch (err) {
+    console.error('[Chat] GET /doc-conversations:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -373,21 +452,14 @@ router.post('/read/:conv_id/:aus_id', async (req, res) => {
 
   try {
     await withConn(async conn => {
-      const r = await conn.execute(
-        `SELECT MAX(msg_id) AS max_id
-         FROM   CHAT_MESSENGERS
-         WHERE  conv_id = :conv_id AND delete_date IS NULL`,
-        { conv_id: convId },
-        { outFormat: oracledb.OUT_FORMAT_OBJECT }
-      );
-      const maxId = r.rows[0]?.MAX_ID;
-      if (!maxId) return;
-
       await conn.execute(
         `UPDATE CHAT_PARTICIPANTS
-         SET    last_read_msg_id = :max_id
+         SET    last_read_msg_id = (
+           SELECT MAX(msg_id) FROM CHAT_MESSENGERS
+           WHERE  conv_id = :conv_id AND delete_date IS NULL
+         )
          WHERE  conv_id = :conv_id AND aus_id = :aus_id`,
-        { max_id: maxId, conv_id: convId, aus_id: ausId }
+        { conv_id: convId, aus_id: ausId }
       );
       await conn.commit();
     });
@@ -405,9 +477,11 @@ router.post('/read/:conv_id/:aus_id', async (req, res) => {
 
 // ─── POST /api/chat/create ────────────────────────────────────────────────────
 // Tạo DM hoặc CHANNEL mới
-// Body: { conv_type: 'DM'|'CHANNEL', name?: string, aus_id, member_aus_ids: number[] }
+// Body: { conv_type, name?, aus_id, username?, member_aus_ids, doc_type?, doc_no? }
+// doc_type + doc_no: bỏ trống = hội thoại chung; có giá trị = gắn với chứng từ
 router.post('/create', async (req, res) => {
-  const { conv_type, name, aus_id, username, member_aus_ids } = req.body;
+  const { conv_type, name, aus_id, username, doc_type, doc_no } = req.body;
+  const member_aus_ids = req.body.member_aus_ids || req.body.members;
 
   if (!conv_type || !aus_id || !Array.isArray(member_aus_ids) || member_aus_ids.length === 0) {
     return res.status(400).json({ error: 'conv_type, aus_id và member_aus_ids là bắt buộc' });
@@ -419,7 +493,10 @@ router.post('/create', async (req, res) => {
     return res.status(400).json({ error: 'CHANNEL phải có name' });
   }
 
-  // Với DM, kiểm tra nếu đã có conversation giữa 2 người này
+  const scopedDocType = doc_type || null;
+  const scopedDocNo   = doc_no   || null;
+
+  // Với DM, kiểm tra nếu đã có conversation cùng scope (doc hoặc chung) giữa 2 người này
   if (conv_type === 'DM') {
     const partnerId = member_aus_ids.find(id => Number(id) !== Number(aus_id)) || member_aus_ids[0];
     try {
@@ -430,9 +507,16 @@ router.post('/create', async (req, res) => {
            JOIN   CHAT_PARTICIPANTS p1 ON p1.conv_id = c.conv_id AND p1.aus_id = :aus_id
            JOIN   CHAT_PARTICIPANTS p2 ON p2.conv_id = c.conv_id AND p2.aus_id = :partner_id
            WHERE  c.conv_type = 'DM'
+             AND  ((:doc_type IS NULL AND c.doc_type IS NULL) OR c.doc_type = :doc_type)
+             AND  ((:doc_no   IS NULL AND c.doc_no   IS NULL) OR c.doc_no   = :doc_no)
              AND  (SELECT COUNT(*) FROM CHAT_PARTICIPANTS WHERE conv_id = c.conv_id) = 2
            FETCH FIRST 1 ROW ONLY`,
-          { aus_id: Number(aus_id), partner_id: Number(partnerId) },
+          {
+            aus_id:     Number(aus_id),
+            partner_id: Number(partnerId),
+            doc_type:   scopedDocType,
+            doc_no:     scopedDocNo,
+          },
           { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
         return r.rows[0];
@@ -449,17 +533,18 @@ router.post('/create', async (req, res) => {
     const convId = await withConn(async conn => {
       const convName  = conv_type === 'CHANNEL' ? String(name).trim() : null;
       const createdBy = username || null;
-      // Tạo conversation dùng CONV_SEQ
       const ins = await conn.execute(
         `INSERT INTO CHAT_CONVERSATIONS
-           (conv_id, conv_type, name, aus_id, created_by, create_date)
+           (conv_id, conv_type, name, aus_id, doc_type, doc_no, created_by, create_date)
          VALUES
-           (CONV_SEQ.NEXTVAL, :conv_type, :name, :aus_id, :created_by, SYSTIMESTAMP)
+           (CONV_SEQ.NEXTVAL, :conv_type, :name, :aus_id, :doc_type, :doc_no, :created_by, SYSTIMESTAMP)
          RETURNING conv_id INTO :out_id`,
         {
           conv_type,
           name:       convName,
           aus_id:     Number(aus_id),
+          doc_type:   scopedDocType,
+          doc_no:     scopedDocNo,
           created_by: createdBy,
           out_id:     { dir: oracledb.BIND_OUT, type: oracledb.NUMBER },
         }
@@ -484,6 +569,7 @@ router.post('/create', async (req, res) => {
       return cid;
     });
 
+    participantCache.delete(convId);
     res.json({ status: 'ok', conv_id: convId });
   } catch (err) {
     console.error('[Chat] POST /create:', err.message);

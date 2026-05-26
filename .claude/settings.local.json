@@ -27,7 +27,8 @@
       "Read(//mnt/c/SQLcl/**)",
       "Read(//mnt/c/Program Files/SQLcl/**)",
       "Bash(node -e ' *)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(git restore *)"
     ]
   },
   "enabledPlugins": {

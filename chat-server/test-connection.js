@@ -1,5 +1,5 @@
 'use strict';
-  require('dotenv').config();
+  require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
   const oracledb = require('oracledb');
 
@@ -75,6 +75,8 @@
       console.error('[Diagnose] Sai username/password — kiểm tra DB_USER và DB_PASSWORD trong .env');
     else if (msg.includes('ORA-12541') || msg.includes('no listener'))
       console.error('[Diagnose] Không tới Oracle listener tại', config.connectString, '— kiểm tra IP, port 1521, DB đang chạy');
+    else if (msg.includes('ORA-12514'))
+      console.error('[Diagnose] Service không đăng ký với listener —', config.connectString, '\n           Chạy trong APEX SQL Workshop: SELECT name, network_name FROM v$services;\n           Sau đó thử: ALTER SYSTEM REGISTER;');
     else if (msg.includes('ORA-12154') || msg.includes('could not resolve'))
       console.error('[Diagnose] Sai service name — DB_CONNECTION_STRING phải có dạng host:1521/SERVICE_NAME');
     else if (msg.includes('ORA-28000'))

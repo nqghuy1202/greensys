@@ -1,40 +1,17 @@
 ﻿'use strict';
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
-const express    = require('express');
-const http       = require('http');
-const cors       = require('cors');
-const oracledb   = require('oracledb');
-const { WebSocketServer } = require('ws');
-const { startCQN }   = require('./cqn');
+const express  = require('express');
+const http     = require('http');
+const cors     = require('cors');
+const oracledb = require('oracledb');
+const { startCQN }        = require('./cqn');
 const { router: chatRouter } = require('./chat');
 
 oracledb.initOracleClient();
 
 const app    = express();
 const server = http.createServer(app);
-
-// WebSocket clients cho notification bell: aus_id → Set<ws>
-const wsClients = new Map();
-
-const wss = new WebSocketServer({ server, path: '/ws' });
-wss.on('connection', (ws, req) => {
-    const ausId = new URL(req.url, 'http://localhost').searchParams.get('aus_id');
-    if (!ausId) { ws.close(); return; }
-
-    if (!wsClients.has(ausId)) wsClients.set(ausId, new Set());
-    wsClients.get(ausId).add(ws);
-    console.log('[WS] Connected aus_id=%s (clients=%d)', ausId, wsClients.get(ausId).size);
-
-    ws.on('close', () => {
-        const set = wsClients.get(ausId);
-        if (set) {
-            set.delete(ws);
-            if (!set.size) wsClients.delete(ausId);
-        }
-        console.log('[WS] Disconnected aus_id=%s', ausId);
-    });
-});
 
 app.use(cors());
 app.use(express.json());
@@ -56,30 +33,19 @@ app.use((req, res, next) => {
     next();
 });
 
-// Danh sách APEX client đang long-poll, key = aus_id
-const waiters = {};
+// Danh sách APEX client đang long-poll: aus_id(string) → [{ res, timeout }]
+const waiters = new Map();
 
 function notifyWaiters(ausId) {
-    // Long-poll (giữ nguyên cho chat module)
-    const list = waiters[ausId] || [];
+    const key  = String(ausId);
+    const list = waiters.get(key) || [];
     list.forEach(({ res, timeout }) => {
         clearTimeout(timeout);
         res.json({ status: 'new_notification' });
     });
-    waiters[ausId] = [];
-
-    // WebSocket push
-    const wsSet = wsClients.get(String(ausId));
-    if (wsSet) {
-        const msg = JSON.stringify({ status: 'new_notification' });
-        for (const ws of wsSet) {
-            if (ws.readyState === ws.OPEN) ws.send(msg);
-        }
-    }
-
-    const wsCount = wsSet ? wsSet.size : 0;
-    if (list.length || wsCount) {
-        console.log('[Notify] aus_id=%s — long-poll=%d ws=%d', ausId, list.length, wsCount);
+    waiters.set(key, []);
+    if (list.length) {
+        console.log('[Notify] aus_id=%s — long-poll=%d', key, list.length);
     }
 }
 
@@ -113,16 +79,48 @@ app.get('/api/notify/:aus_id', (req, res) => {
 // APEX long-poll: GET /api/wait/:aus_id
 // Trả về ngay khi có notification mới, hoặc timeout sau 25s
 app.get('/api/wait/:aus_id', (req, res) => {
-    const ausId = req.params.aus_id;
-    if (!waiters[ausId]) waiters[ausId] = [];
+    const key = String(req.params.aus_id);
+    if (!waiters.has(key)) waiters.set(key, []);
 
     const timeout = setTimeout(() => {
-        waiters[ausId] = waiters[ausId].filter(w => w.res !== res);
+        const list = waiters.get(key) || [];
+        waiters.set(key, list.filter(w => w.res !== res));
         res.json({ status: 'timeout' });
     }, 25_000);
 
-    waiters[ausId].push({ res, timeout });
+    waiters.get(key).push({ res, timeout });
+
+    req.on('close', () => {
+        const list = waiters.get(key) || [];
+        waiters.set(key, list.filter(w => w.res !== res));
+        clearTimeout(timeout);
+    });
 });
+
+// ──────────────────────────────────────────────
+// Graceful shutdown (pm2 restart / SIGTERM)
+// ──────────────────────────────────────────────
+function shutdown(signal) {
+    console.log('[Server] %s received — shutting down gracefully', signal);
+    // Drain all pending long-poll waiters immediately
+    for (const [, list] of waiters) {
+        for (const { res, timeout } of list) {
+            clearTimeout(timeout);
+            res.json({ status: 'timeout' });
+        }
+    }
+    waiters.clear();
+
+    server.close(() => {
+        oracledb.getPool().close(10)
+            .then(() => { console.log('[Server] Pool closed'); process.exit(0); })
+            .catch(() => process.exit(1));
+    });
+    // Force-exit if server.close() hangs beyond 15s
+    setTimeout(() => process.exit(1), 15_000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));
 
 // ──────────────────────────────────────────────
 // Startup
