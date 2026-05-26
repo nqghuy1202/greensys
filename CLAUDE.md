@@ -348,7 +348,7 @@ Frontend uses `Number(row.from_aus_id) === currentAusId` to determine if a messa
 | `doc_type` | VARCHAR2(50) NULL | Document type: SO, PXK, HD… `NULL` = general conversation |
 | `doc_no` | VARCHAR2(100) NULL | Document number e.g. `SO-2601/010`. `NULL` = general conversation |
 
-`doc_type IS NULL AND doc_no IS NULL` → general Messenger conversation.  
+`doc_type IS NULL AND doc_no IS NULL` → general Messenger conversation.
 `doc_type IS NOT NULL` → document-scoped, only shown in Doc Chat Modal.
 
 **CHAT_USER_ONLINE table:** Replaces Node.js in-memory `onlineUsers` Map so PL/SQL can query presence directly.
@@ -502,10 +502,11 @@ Modal that opens from the right sidebar of ERP pages (SO, PXK, HD…). Each docu
 
 ### APEX Setup
 
-- **Modal Page ID: `10022710201`** (Modal Dialog page — all doc-chat callbacks go here)
-- Cross-page calls from ERP pages: `apex.server.process('name', data, { pageId: 10022710201 })`
+Doc-chat callbacks are **Application Processes** (Shared Components → Application Processes, type: Ajax Callback) — the same pattern as Chat System callbacks. They are **not** page-level Ajax Callbacks.
 
-### Ajax Callbacks on Modal Page 10022710201
+**Why not page-level:** `apex.server.process('name', data, { pageId: N })` in APEX 24.2 does not route to page-level callbacks when called from a different page — APEX looks for the callback on the current page. Attempting to use `pageId` causes `parsererror` ("Process not found" plain-text response).
+
+### Application Processes for Doc Chat
 
 | Callback | x01 | x02 | x03 | x04 | x05 | Relay Node? |
 |----------|-----|-----|-----|-----|-----|-------------|
@@ -551,18 +552,22 @@ Dynamic Action: Click on `#Btn_DocChat` → `window.openDocChatLazy();`
 
 ### apexCall utility (in doc-chat-app.jsx)
 
+No `pageId` — Application Processes are callable from any page without it:
+
 ```javascript
-const MODAL_PAGE_ID = 10022710201;
 function apexCall(processName, params = {}) {
   return new Promise((resolve, reject) => {
     apex.server.process(processName,
       { x01: params.x01||'', x02: params.x02||'', x03: params.x03||'',
         x04: params.x04||'', x05: params.x05||'' },
-      { dataType: 'json', pageId: MODAL_PAGE_ID,
-        success: resolve, error: (_, err) => reject(new Error(err)) });
+      { dataType: 'json',
+        success: resolve,
+        error: (jqXHR, err) => reject(new Error(jqXHR.responseText || err)) });
   });
 }
 ```
+
+The error callback uses `jqXHR.responseText` to surface the actual Oracle error (e.g., `ORA-00904`) instead of the generic `'APEX'` status string.
 
 ## Chat UI v2 — Chat hệ thống Page
 
@@ -597,12 +602,14 @@ loadLibsSeq(libs, function () { loadJSXSeq(jsxFiles); });
 
 ### APEX Application Processes — critical distinction
 
-Chat callbacks are **Application Processes** (Shared Components → Application Processes, type: Ajax Callback), **not** page-level Ajax Callbacks.
+All chat callbacks (both Chat System and Doc Chat) are **Application Processes** (Shared Components → Application Processes, type: Ajax Callback), **not** page-level Ajax Callbacks.
 
-- Page-level: requires correct `pageId` in `apex.server.process` call — error-prone, gives `Error: APEX` if `pageId` is 0 or wrong
-- Application Process: no `pageId` needed, callable from any page, reusable across Chat page and Doc Chat Modal
+- Page-level: requires correct `pageId` in `apex.server.process` call — does not route from other pages in APEX 24.2; produces `parsererror` ("Process not found")
+- Application Process: no `pageId` needed, callable from any page
 
-9 processes: `chatConvList`, `chatMsgList`, `chatMemberList`, `chatContactList`, `chatSend`, `chatCreate`, `chatRead`, `chatTyping`, `chatEvents`. Full SQL: `docs/chat_apex_callbacks_v2.sql`.
+9 Chat System processes: `chatConvList`, `chatMsgList`, `chatMemberList`, `chatContactList`, `chatSend`, `chatCreate`, `chatRead`, `chatTyping`, `chatEvents`. Full SQL: `docs/chat_apex_callbacks_v2.sql`.
+
+8 Doc Chat processes: `docChatConversations`, `docChatMessages`, `docChatMembers`, `docChatCreate`, `docChatSend`, `docChatRead`, `docChatTyping`, `docChatEvents`. Full SQL: `docs/doc-chat-callbacks.sql`.
 
 ### `:APP_USER` instead of `:G_AUS_ID` in Application Processes
 
@@ -620,13 +627,27 @@ EXCEPTION WHEN NO_DATA_FOUND THEN
 END;
 ```
 
-This pattern replaces `l_aus_id := TO_NUMBER(:G_AUS_ID)` in all 9 callbacks. `:G_AUS_ID` can still be used in **page-level** callbacks (notificationWait, chatHeartbeat on Page 0) where the page session state is reliably sent.
+This pattern replaces `l_aus_id := TO_NUMBER(:G_AUS_ID)` in all callbacks. `:G_AUS_ID` can still be used in **page-level** callbacks (notificationWait, chatHeartbeat on Page 0) where the page session state is reliably sent.
 
 **Debug process:** Create Application Process `chatDebug` (Ajax Callback):
 ```sql
 -- Returns: app_user, aus_id, g_aus_id, ok
 -- Test from console: apex.server.process('chatDebug', {}, { dataType:'json', success: d => console.table(d) })
 -- aus_id=-1 → user_name mismatch; aus_id=-2 → SQL error; app_user='nobody' → session expired
+```
+
+### Application Process — Known Oracle Limitation
+
+**`ORA-22816: unsupported feature with RETURNING clause`** — `INSERT ... RETURNING INTO` does not work inside APEX Application Processes. Use sequence NEXTVAL into a variable before the INSERT:
+
+```sql
+-- Wrong (causes ORA-22816 in Application Process):
+INSERT INTO CHAT_CONVERSATIONS (conv_id, ...) VALUES (CONV_SEQ.NEXTVAL, ...)
+RETURNING conv_id INTO l_conv_id;
+
+-- Correct:
+l_conv_id := CONV_SEQ.NEXTVAL;
+INSERT INTO CHAT_CONVERSATIONS (conv_id, ...) VALUES (l_conv_id, ...);
 ```
 
 ### Schema corrections
