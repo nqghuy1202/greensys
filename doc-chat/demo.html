@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Doc Chat — Demo</title>
+  <link rel="stylesheet" href="doc-chat.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #CBD5E1;
+      background-image: repeating-linear-gradient(0deg,transparent,transparent 39px,#B8C4D0 39px,#B8C4D0 40px),
+                        repeating-linear-gradient(90deg,transparent,transparent 39px,#B8C4D0 39px,#B8C4D0 40px);
+      min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 12px;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    /* Demo badge */
+    .demo-badge {
+      background: #1E293B; color: #94A3B8; font-size: 11px; font-weight: 600;
+      letter-spacing: .08em; padding: 5px 14px; border-radius: 999px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .demo-badge span { width: 7px; height: 7px; border-radius: 50%; background: #22C55E; display: inline-block; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
+
+    /* The modal is rendered as a standalone card */
+    #doc-chat-root {
+      width: min(1480px, 96vw);
+      height: min(880px, 90vh);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 32px 80px -16px rgba(15,23,32,.40), 0 0 0 1px rgba(255,255,255,.08);
+    }
+  </style>
+</head>
+<body>
+
+<div class="demo-badge"><span></span> DEMO MODE — không cần APEX / Oracle</div>
+<div id="doc-chat-root"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════════
+//  MOCK — APEX environment
+// ═══════════════════════════════════════════════════════════════════════════════
+
+window.CHAT_AUS_ID = 1;   // người dùng hiện tại
+
+function $v(name) {
+  var items = {
+    P_DOC_TYPE:   'SO',
+    P_DOC_NO:     'SO-2601/001',
+    P_DOC_LABEL:  'Đơn hàng bán',
+    P_DOC_STATUS: 'Đã duyệt',
+    P_DOC_TOTAL:  '',
+    P_DOC_FIELDS: '',
+  };
+  return (name in items) ? items[name] : '';
+}
+function $s() {}
+
+// Đặt context đầy đủ qua sessionStorage (đọc bởi entry point trong doc-chat-app.jsx)
+sessionStorage.setItem('docChatCtx', JSON.stringify({
+  doc_type:   'SO',
+  doc_no:     'SO-2601/001',
+  doc_label:  'Đơn hàng bán',
+  doc_status: 'Đã duyệt',
+  doc_total:  '125,000,000 ₫',
+  doc_fields: [
+    ['Đối tượng',    'Công ty TNHH ABC Việt Nam'],
+    ['Ngày đơn',     '26/01/2026'],
+    ['Ngày xuất',    '30/01/2026'],
+    ['Kho xuất',     'Kho K01-MT'],
+    ['Thanh toán',   'Chuyển khoản 30 ngày'],
+    ['Số dòng hàng', '5'],
+  ],
+}));
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SAMPLE DATA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var NOW = Date.now();
+function ts(msAgo)   { return new Date(NOW - msAgo).toISOString(); }
+function mins(n)     { return n * 60000; }
+function hours(n)    { return n * 3600000; }
+function days(n)     { return n * 86400000; }
+
+var CONVERSATIONS = [
+  {
+    conv_id: 101, conv_type: 'CHANNEL', display_name: 'Nhóm SO-2601/001',
+    last_msg_preview: 'Hàng đã xuất kho, bạn kiểm tra bill lading nhé',
+    last_msg_time: '14:32', unread_count: 2, member_count: 4,
+    doc_type: 'SO', doc_no: 'SO-2601/001',
+  },
+  {
+    conv_id: 102, conv_type: 'DM', display_name: 'Trần Thị Lan',
+    partner_aus_id: 2,
+    last_msg_preview: 'KH xác nhận giao hàng ngày 30/1 nha',
+    last_msg_time: '09:15', unread_count: 0, member_count: 2,
+    doc_type: 'SO', doc_no: 'SO-2601/001',
+  },
+  {
+    conv_id: 103, conv_type: 'DM', display_name: 'Lê Văn Minh',
+    partner_aus_id: 3,
+    last_msg_preview: 'Kho K01 còn đủ hàng, chuẩn bị được',
+    last_msg_time: 'Hôm qua', unread_count: 1, member_count: 2,
+    doc_type: 'SO', doc_no: 'SO-2601/001',
+  },
+];
+
+var MESSAGES = {
+  101: [
+    {
+      msg_id: 1, from_aus_id: 2, from_name: 'Trần Thị Lan',
+      body: 'Đơn hàng SO-2601/001 đã được duyệt. Mọi người cùng phối hợp xử lý nhé.',
+      create_date: ts(days(2) + hours(8)),
+    },
+    {
+      msg_id: 2, from_aus_id: 3, from_name: 'Lê Văn Minh',
+      body: 'Kho K01-MT còn đủ hàng theo đơn. Tôi sẽ chuẩn bị packing list hôm nay.',
+      create_date: ts(days(2) + hours(7.5)),
+    },
+    {
+      msg_id: 3, from_aus_id: 4, from_name: 'Phạm Thu Hà',
+      body: '@Lan giá trên đơn đã bao gồm VAT chưa? Cần xác nhận trước khi xuất hóa đơn.',
+      create_date: ts(days(1) + hours(9)),
+    },
+    {
+      msg_id: 4, from_aus_id: 2, from_name: 'Trần Thị Lan',
+      body: 'Đã bao gồm VAT 10% rồi nhé. KH thanh toán chuyển khoản 30 ngày.',
+      reply_to_msg_id: 3, reply_from_name: 'Phạm Thu Hà',
+      reply_body: '@Lan giá trên đơn đã bao gồm VAT chưa?',
+      create_date: ts(days(1) + hours(8.8)),
+    },
+    {
+      msg_id: 5, from_aus_id: 5, from_name: 'Võ Đình Khoa',
+      body: 'Tốt, đơn hàng này ưu tiên giao đúng hạn. Cần hỗ trợ gì thì báo.',
+      create_date: ts(days(1) + hours(7)),
+    },
+    {
+      msg_id: 6, from_aus_id: 1, from_name: 'Nguyễn Quốc Huy',
+      body: 'Tôi đã confirm với KH về ngày giao 30/01. KH đồng ý và đã ứng 50% giá trị đơn.',
+      create_date: ts(hours(6)),
+    },
+    {
+      msg_id: 7, from_aus_id: 3, from_name: 'Lê Văn Minh',
+      body: 'Hàng đã xuất kho lúc 13:45, bạn kiểm tra bill lading số BL-2601-047 nhé.',
+      create_date: ts(mins(90)),
+    },
+    {
+      msg_id: 8, from_aus_id: 4, from_name: 'Phạm Thu Hà',
+      body: 'Tôi đang chờ bộ chứng từ (bill lading + CO + packing list) để làm hóa đơn GTGT.',
+      create_date: ts(mins(28)),
+    },
+    {
+      msg_id: 9, from_aus_id: 1, from_name: 'Nguyễn Quốc Huy',
+      body: '@Hà mình sẽ gửi file scan trước 16h hôm nay. Bản gốc có thứ 2 tuần sau.',
+      reply_to_msg_id: 8, reply_from_name: 'Phạm Thu Hà',
+      reply_body: 'Tôi đang chờ bộ chứng từ để làm hóa đơn GTGT.',
+      create_date: ts(mins(5)),
+    },
+  ],
+  102: [
+    {
+      msg_id: 20, from_aus_id: 2, from_name: 'Trần Thị Lan',
+      body: 'Huy ơi, KH hỏi có thể giao sớm hơn ngày 30 không? Họ cần hàng trước 28/01.',
+      create_date: ts(days(1) + hours(10)),
+    },
+    {
+      msg_id: 21, from_aus_id: 1, from_name: 'Nguyễn Quốc Huy',
+      body: 'Để tôi check với kho xem còn hàng không, vì đơn PXK-2601/003 cũng xuất ngày đó.',
+      create_date: ts(days(1) + hours(9.8)),
+    },
+    {
+      msg_id: 22, from_aus_id: 2, from_name: 'Trần Thị Lan',
+      body: 'KH vừa confirm lại rồi, cứ giữ ngày 30/01 là được. Không cần thay đổi nữa.',
+      create_date: ts(hours(3)),
+    },
+  ],
+  103: [
+    {
+      msg_id: 30, from_aus_id: 1, from_name: 'Nguyễn Quốc Huy',
+      body: 'Minh ơi, đơn SO-2601/001 — 5 dòng hàng, tổng khoảng 200 thùng. Chuẩn bị được không?',
+      create_date: ts(days(1) + hours(11)),
+    },
+    {
+      msg_id: 31, from_aus_id: 3, from_name: 'Lê Văn Minh',
+      body: 'Kho K01 còn đủ hàng nhé. Sáng mai mình sẽ làm phiếu xuất và cân bì.',
+      create_date: ts(hours(20)),
+    },
+  ],
+};
+
+var MEMBERS = {
+  101: [
+    { aus_id: 1, full_name: 'Nguyễn Quốc Huy',  user_name: 'nqhuy',   position_name: 'NV Kinh doanh',    dep_name: 'Phòng kinh doanh', presence: 'online',  is_admin: 1 },
+    { aus_id: 2, full_name: 'Trần Thị Lan',      user_name: 'ttlan',   position_name: 'Trưởng P. kinh doanh', dep_name: 'Phòng kinh doanh', presence: 'online',  is_admin: 0 },
+    { aus_id: 3, full_name: 'Lê Văn Minh',       user_name: 'lvminh',  position_name: 'Thủ kho',          dep_name: 'Kho vận',          presence: 'away',    is_admin: 0 },
+    { aus_id: 4, full_name: 'Phạm Thu Hà',       user_name: 'ptha',    position_name: 'Kế toán',          dep_name: 'Phòng kế toán',    presence: 'offline', is_admin: 0 },
+  ],
+  102: [
+    { aus_id: 1, full_name: 'Nguyễn Quốc Huy',  user_name: 'nqhuy',  position_name: 'NV Kinh doanh',         dep_name: 'Phòng kinh doanh', presence: 'online', is_admin: 0 },
+    { aus_id: 2, full_name: 'Trần Thị Lan',      user_name: 'ttlan',  position_name: 'Trưởng P. kinh doanh',  dep_name: 'Phòng kinh doanh', presence: 'online', is_admin: 0 },
+  ],
+  103: [
+    { aus_id: 1, full_name: 'Nguyễn Quốc Huy',  user_name: 'nqhuy',  position_name: 'NV Kinh doanh', dep_name: 'Phòng kinh doanh', presence: 'online', is_admin: 0 },
+    { aus_id: 3, full_name: 'Lê Văn Minh',       user_name: 'lvminh', position_name: 'Thủ kho',       dep_name: 'Kho vận',          presence: 'away',   is_admin: 0 },
+  ],
+};
+
+var CONTACTS = [
+  { aus_id: 2, full_name: 'Trần Thị Lan',   user_name: 'ttlan',   position_name: 'Trưởng P. kinh doanh', dep_name: 'Phòng kinh doanh' },
+  { aus_id: 3, full_name: 'Lê Văn Minh',    user_name: 'lvminh',  position_name: 'Thủ kho',              dep_name: 'Kho vận' },
+  { aus_id: 4, full_name: 'Phạm Thu Hà',    user_name: 'ptha',    position_name: 'Kế toán',              dep_name: 'Phòng kế toán' },
+  { aus_id: 5, full_name: 'Võ Đình Khoa',   user_name: 'vdkhoa',  position_name: 'Giám đốc',             dep_name: 'Ban giám đốc' },
+  { aus_id: 6, full_name: 'Nguyễn Thị Mai', user_name: 'ntmai',   position_name: 'NV Kinh doanh',        dep_name: 'Phòng kinh doanh' },
+  { aus_id: 7, full_name: 'Đặng Hoài Nam',  user_name: 'dhnam',   position_name: 'Phó phòng kho vận',    dep_name: 'Kho vận' },
+];
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  LONG-POLL SIMULATION
+//  Sau 8s inject 1 tin nhắn mới từ user khác vào conv 101 để demo real-time
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var _pendingEvents = [];
+var _nextMsgId     = 200;
+var _demoFired     = false;
+
+setTimeout(function () {
+  if (_demoFired) return;
+  _demoFired = true;
+  _nextMsgId++;
+  _pendingEvents.push({
+    type:        'message',
+    conv_id:     101,
+    msg_id:      _nextMsgId,
+    from_aus_id: 2,
+    from_name:   'Trần Thị Lan',
+    body:        'Huy ơi, KH vừa gọi hỏi về phí vận chuyển — họ muốn confirm lại trước khi nhận hàng.',
+    create_date: new Date().toISOString(),
+  });
+}, 8000);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  MOCK — apex.server.process
+// ═══════════════════════════════════════════════════════════════════════════════
+
+window.apex = {
+  server: {
+    process: function (processName, params, opts) {
+      var delay  = 250;
+      var result = { status: 'ok' };
+
+      switch (processName) {
+
+        case 'docChatConversations':
+          result = { conversations: JSON.parse(JSON.stringify(CONVERSATIONS)) };
+          break;
+
+        case 'docChatMessages':
+          result = { messages: JSON.parse(JSON.stringify(MESSAGES[params.x01] || [])) };
+          break;
+
+        case 'docChatMembers':
+          result = { members: JSON.parse(JSON.stringify(MEMBERS[params.x01] || [])) };
+          break;
+
+        case 'chatContactList':
+          result = { contacts: JSON.parse(JSON.stringify(CONTACTS)) };
+          break;
+
+        case 'docChatSend': {
+          _nextMsgId++;
+          var cid = Number(params.x01);
+          // Sau 1.5s, gửi echo từ "Trần Thị Lan" vào cùng conv để demo real-time reply
+          if (cid === 101 && Math.random() > 0.4) {
+            var echoId = _nextMsgId + 100;
+            var echoBody = [
+              'OK, nhận được rồi nhé!',
+              'Cảm ơn bạn đã cập nhật.',
+              'Tôi sẽ xử lý ngay.',
+              'Đã noted, để tôi kiểm tra lại.',
+            ][Math.floor(Math.random() * 4)];
+            setTimeout(function () {
+              _pendingEvents.push({
+                type: 'message', conv_id: 101,
+                msg_id: echoId, from_aus_id: 2, from_name: 'Trần Thị Lan',
+                body: echoBody, create_date: new Date().toISOString(),
+              });
+            }, 1500);
+          }
+          result = { status: 'ok', msg_id: _nextMsgId };
+          break;
+        }
+
+        case 'docChatCreate': {
+          var newId = 300 + (_nextMsgId++);
+          var newConv = {
+            conv_id:          newId,
+            conv_type:        params.x01,
+            display_name:     params.x02 || (params.x01 === 'DM' ? 'Trao đổi mới' : 'Nhóm mới'),
+            last_msg_preview: '',
+            last_msg_time:    '',
+            unread_count:     0,
+            member_count:     1,
+            doc_type:         'SO',
+            doc_no:           'SO-2601/001',
+          };
+          CONVERSATIONS.unshift(newConv);
+          MESSAGES[newId]  = [];
+          var mids = [];
+          try { mids = JSON.parse(params.x03 || '[]'); } catch (_) {}
+          MEMBERS[newId] = [MEMBERS[101][0]].concat(
+            mids.map(function (id) {
+              return CONTACTS.find(function (c) { return c.aus_id === id; }) ||
+                     { aus_id: id, full_name: 'User ' + id, user_name: 'user' + id, presence: 'offline', is_admin: 0 };
+            })
+          );
+          result = { status: 'ok', conv_id: newId };
+          break;
+        }
+
+        case 'docChatRead':
+          // Mark as read — update unread in local CONVERSATIONS
+          CONVERSATIONS.forEach(function (c) {
+            if (String(c.conv_id) === String(params.x01)) c.unread_count = 0;
+          });
+          result = { status: 'ok' };
+          break;
+
+        case 'docChatTyping':
+          result = { status: 'ok' };
+          break;
+
+        case 'docChatEvents':
+          // Long-poll: hold 3s if nothing pending, resolve immediately if events waiting
+          if (_pendingEvents.length > 0) {
+            var evts = _pendingEvents.slice();
+            _pendingEvents = [];
+            result = { events: evts };
+            delay  = 80;
+          } else {
+            result = { events: [] };
+            delay  = 3000;
+          }
+          break;
+
+        default:
+          result = { status: 'ok' };
+      }
+
+      setTimeout(function () {
+        if (opts && opts.success) opts.success(result);
+      }, delay);
+    }
+  },
+  navigation: {
+    dialog: {
+      close: function () {
+        document.getElementById('doc-chat-root').innerHTML =
+          '<div style="display:grid;place-items:center;height:100%;background:#F4F6F8;font-family:sans-serif;color:#7A848F;font-size:14px;">' +
+          '<div style="text-align:center;"><div style="font-size:32px;margin-bottom:8px;">✓</div>Dialog đã đóng (demo mode)</div></div>';
+      }
+    }
+  }
+};
+</script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════════
+//  LOAD CHAIN: React → ReactDOM → Babel → JSX files
+// ═══════════════════════════════════════════════════════════════════════════════
+(function () {
+  var libs = [
+    'https://unpkg.com/react@18/umd/react.development.js',
+    'https://unpkg.com/react-dom@18/umd/react-dom.development.js',
+    'https://unpkg.com/@babel/standalone/babel.min.js',
+  ];
+  var jsxFiles = [
+    'icons.jsx',
+    'conversation-list.jsx',
+    'chat-thread.jsx',
+    'info-panel.jsx',
+    'empty-state.jsx',
+    'doc-chat-app.jsx',
+  ];
+
+  function loadScript(src, cb) {
+    var s = document.createElement('script');
+    s.src = src;
+    s.onload = cb;
+    s.onerror = function () { console.error('[Demo] Failed:', src); };
+    document.head.appendChild(s);
+  }
+
+  var li = 0;
+  function nextLib() {
+    if (li >= libs.length) { loadJSX(); return; }
+    loadScript(libs[li++], nextLib);
+  }
+
+  var ji = 0;
+  function loadJSX() {
+    if (ji >= jsxFiles.length) return;
+    var fname = jsxFiles[ji];
+    fetch(fname)
+      .then(function (r) { return r.text(); })
+      .then(function (code) {
+        var s = document.createElement('script');
+        s.textContent = '(function(){\n' +
+          Babel.transform(code, { presets: ['react'], filename: fname }).code +
+          '\n})();';
+        document.body.appendChild(s);
+        ji++;
+        loadJSX();
+      })
+      .catch(function (e) { console.error('[Demo] JSX load failed:', fname, e); });
+  }
+
+  nextLib();
+})();
+</script>
+
+</body>
+</html>

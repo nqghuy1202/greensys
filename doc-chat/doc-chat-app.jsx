@@ -269,8 +269,7 @@ const DocChatApp = ({ context, onClose }) => {
   const showEmpty      = !loadingConvs && conversations.length === 0;
 
   return (
-    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
+    <div className="modal">
 
         {/* ── Header ─────────────────────────────────────────────────────────── */}
         <div className="modal-header">
@@ -363,25 +362,37 @@ const DocChatApp = ({ context, onClose }) => {
             onCreate={handleCreate}
           />
         )}
-      </div>
     </div>
   );
 };
 
-// ─── Entry point ──────────────────────────────────────────────────────────────
+// ─── Entry point — auto-render on APEX Modal Dialog page load ─────────────────
+// Context strategy: sessionStorage (rich, any chars) + APEX items (fallback for type/no)
 
-window.openDocChat = function (context) {
-  let container = document.getElementById('doc-chat-container');
-  if (!container) {
-    container = document.createElement('div');
-    container.id = 'doc-chat-container';
-    document.body.appendChild(container);
-  }
+(function () {
+  var container = document.getElementById('doc-chat-root');
+  if (!container) { console.error('[DocChat] #doc-chat-root not found'); return; }
+
+  var stored = {};
+  try {
+    var raw = sessionStorage.getItem('docChatCtx');
+    if (raw) stored = JSON.parse(raw);
+  } catch (_) {}
+
+  var context = {
+    doc_type:   stored.doc_type   || $v('P_DOC_TYPE')   || '',
+    doc_no:     stored.doc_no     || $v('P_DOC_NO')     || '',
+    doc_label:  stored.doc_label  || $v('P_DOC_LABEL')  || '',
+    doc_status: stored.doc_status || $v('P_DOC_STATUS') || '',
+    doc_total:  stored.doc_total  || $v('P_DOC_TOTAL')  || '',
+    doc_fields: stored.doc_fields || [],
+  };
+
   ReactDOM.render(
     <DocChatApp
       context={context}
-      onClose={() => ReactDOM.unmountComponentAtNode(container)}
+      onClose={() => apex.navigation.dialog.close()}
     />,
     container
   );
-};
+})();

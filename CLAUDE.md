@@ -526,29 +526,56 @@ Full PL/SQL for all 8 callbacks (with MATERIALIZE fixes and INTERVAL variable fi
 Seven files loaded sequentially via Babel at runtime (same pattern as Chat module):
 
 ```
-doc-chat.css              ← design tokens, 3-pane layout, bubble styles
+doc-chat.css              ← design tokens, 3-pane layout, bubble styles (scoped to #doc-chat-root)
 icons.jsx                 ← SVG icon components (reuse from chat/)
 conversation-list.jsx     ← left pane: search, tabs, group/DM list
 chat-thread.jsx           ← center pane: messages, composer, @mention
 info-panel.jsx            ← right pane: doc summary card, members, files
 empty-state.jsx           ← empty state + create group modal
-doc-chat-app.jsx          ← entry point; exposes window.openDocChat(context)
+doc-chat-app.jsx          ← entry point; auto-renders into #doc-chat-root on APEX Modal Dialog page load
 ```
+
+`demo.html` in `doc-chat/` — standalone browser demo with mock data, no APEX/Oracle needed.
+
+### APEX Modal Dialog Page Setup (page ID: 100227102)
+
+Doc Chat is an **APEX Modal Dialog Page**, not a custom React overlay. APEX handles backdrop, close button, and dialog sizing.
+
+- **Page Items (Hidden):** `P_DOC_TYPE`, `P_DOC_NO`, `P_DOC_LABEL`, `P_DOC_STATUS`, `P_DOC_TOTAL`, `P_DOC_FIELDS`
+- **Region:** Static Content → `<div id="doc-chat-root" style="width:100%;height:100%;"></div>` (Template: Blank with Attributes)
+- **CSS → Inline:** paste `doc-chat/doc-chat.css`
+- **Execute when Page Loads:** `window.CHAT_AUS_ID = &G_AUS_ID.;` then load React → ReactDOM → Babel → 6 JSX files sequentially via `fetch()` + `Babel.transform()`
+- **Dialog Width:** 1480, **Height:** 860
+
+`doc-chat-app.jsx` entry point reads context from `sessionStorage` key `docChatCtx` first (rich data), falls back to `$v('P_DOC_TYPE')` / `$v('P_DOC_NO')` etc. Calls `apex.navigation.dialog.close()` on close.
 
 ### ERP Page Integration
 
-Each ERP page sets `window.DOC_CHAT_CONTEXT` with doc fields, then lazy-loads the modal on button click:
+Opening the modal requires a URL with SSP checksum — generated server-side via `APEX_UTIL.PREPARE_URL` in the `redirect_page` Application Process (see APEX Navigation Pattern section). Complex data (doc_total, doc_fields) goes through `sessionStorage`; only `P_DOC_TYPE` and `P_DOC_NO` go through URL.
+
+Dynamic Action on `#Btn_DocChat` — Execute JavaScript Code:
 
 ```javascript
-window.DOC_CHAT_CONTEXT = {
+var triggerEl = this.triggeringElement;
+
+var docCtx = {
   doc_type: 'SO', doc_no: '&P15_SO_NO.',
   doc_label: 'Đơn hàng bán', doc_status: '&P15_STATUS.',
-  doc_fields: [['Đối tượng', '&P15_CUSTOMER_NAME.'], ...]
+  doc_total: '&P15_TOTAL.',
+  doc_fields: [['Đối tượng', '&P15_CUSTOMER_NAME.'], /* ... */]
 };
-window.openDocChatLazy = function() { /* lazy-load JSX files then call openDocChat */ };
-```
+sessionStorage.setItem('docChatCtx', JSON.stringify(docCtx));
 
-Dynamic Action: Click on `#Btn_DocChat` → `window.openDocChatLazy();`
+let url = await globalHandleAjaxProcess(['redirect_page', {
+  x01: 100227102,
+  x02: `P_DOC_TYPE,P_DOC_NO:${docCtx.doc_type},${docCtx.doc_no}`,
+  x03: 'G_APP_XXXX_ID'   // ← app item chứa APP_ID của ứng dụng hiện tại
+}, 'text']);
+
+apex.navigation.dialog(url, {
+  title: 'Trao đổi chứng từ', height: 860, width: 1480, modal: true, resizable: false
+}, null, triggerEl);
+```
 
 ### apexCall utility (in doc-chat-app.jsx)
 
@@ -700,12 +727,193 @@ Any scroll container inside a flex/grid layout that expands with content instead
 - **CSS files** (`styles.css`, `page-styles.css`): can be pasted directly into **Page → CSS → Inline** in APEX (no file upload). Combined size ~23KB, within APEX's 32KB inline limit.
 - **JSX files**: must remain as Static Application Files — they contain JSX syntax that requires `Babel.transform()` at runtime via `fetch()`. Cannot be inlined in APEX JavaScript section.
 
+## APEX Navigation Pattern — Opening Pages / Dialogs from JavaScript
+
+### Problem
+
+`apex.util.makeApplicationUrl()` with `itemNames`/`itemValues` does **not** generate an SSP checksum → `APEX.SESSION_STATE.SSP_CHECKSUM_MISSING` error. Checksum can only be generated server-side.
+
+### Solution — `redirect_page` Application Process + `globalHandleAjaxProcess`
+
+The project uses a reusable `redirect_page` Application Process that calls `APEX_UTIL.PREPARE_URL` to produce a valid URL with checksum:
+
+```sql
+DECLARE
+  l_url     VARCHAR2(2000);
+  l_app     NUMBER := v(apex_application.g_x03);   -- reads app ID from item named by g_x03
+  l_session NUMBER := v('APP_SESSION');
+BEGIN
+  l_url := APEX_UTIL.PREPARE_URL(
+               p_url           => 'f?p=' || l_app
+                                  || ':' || apex_application.g_x01   -- page ID
+                                  || ':' || l_session
+                                  || '::NO::'
+                                  || apex_application.g_x02,         -- ITEM_NAMES:ITEM_VALUES
+               p_checksum_type => 'SESSION');
+  HTP.p(l_url);
+END;
+```
+
+**Parameter convention:**
+
+| Param | Content |
+|-------|---------|
+| `x01` | Target page ID |
+| `x02` | `ITEM1,ITEM2:val1,val2` — APEX f?p item format (position 7:8) |
+| `x03` | Name of application item that holds APP_ID (e.g. `'G_APP_1303_ID'`) |
+
+**JavaScript usage (`globalHandleAjaxProcess` helper):**
+
+```javascript
+var triggerEl = this.triggeringElement;   // capture before await
+
+// Navigate current page:
+let url = await globalHandleAjaxProcess(['redirect_page', { x01: pageId, x02: 'ITEM:val', x03: 'G_APP_XXXX_ID' }, 'text']);
+apex.navigation.redirect(url);
+
+// Open Modal Dialog:
+let url = await globalHandleAjaxProcess(['redirect_page', { x01: pageId, x02: 'ITEM:val', x03: 'G_APP_XXXX_ID' }, 'text']);
+apex.navigation.dialog(url, { title, height, width, modal: true, resizable: false }, null, triggerEl);
+```
+
+**Why capture `triggerEl` before `await`:** after the async callback completes, the DA `this` context may no longer be valid.
+
+**sessionStorage for complex values:** item values containing commas (currency amounts), Unicode, or JSON arrays cannot be safely passed via APEX URL. Store them in `sessionStorage` and pass only simple identifiers (IDs, codes) through `x02`.
+
 ## ORDS — Findings & Constraints
 
 - **URL pattern:** `/ords/dev/` (schema APEX_DEV, mapping `dev` — not `/dev24/`)
 - **Cannot call ORDS directly from browser** — global ORDS server config on this environment requires auth for all endpoints. Returns 403 even when module is Published with no privilege mapping. Cannot override from APEX UI; requires server-level access.
 - **Use `apex.server.process` instead** — auth via APEX session, no CORS, no Mixed Content issues.
 - **Parameter Source Types in APEX 24.2 RESTful Services:** only `HTTP Header` and `URI` available. There is no "Query String" option. Query string params (`:bind_var` in SQL) are auto-bound by ORDS without explicit declaration — do not declare them as HTTP Header or ORDS will bind NULL.
+
+## CRM Module
+
+ERP module for managing `KHTN` (Khách hàng tiềm năng / Leads). Lives in APEX as a **drawer page** opened via iframe — not inline content.
+
+### Drawer page structure
+
+The KHTN drawer loads a separate APEX page inside `<iframe>` (URL pattern: `/ords/r/dev/.../thông-tin-khách-hàng-tiềm-năng`). This means:
+- `#Btn_Delete`, `#Btn_Save_Cle` etc. are **inside the iframe document** — not in the parent page DOM
+- Moving buttons to the dialog titlebar requires the proxy pattern (see APEX UI Utility Patterns below)
+- Page item prefix: `P210401102_` (drawer page), `p21040110205_` (iframe URL params)
+
+### CrmLeads class pattern
+
+```javascript
+// Separate field lists even if currently identical — they will diverge
+const CLE_CREATE_FIELDS = ['cle_id', 'cle_code', 'ven_id', ...]; // insert-only fields
+const CLE_UPDATE_FIELDS = ['cle_id', 'cle_code', 'ven_id', ...]; // update fields
+
+class CrmLeads {
+    static #genItems(fields) {
+        return globalGenItems('string', '#', pageId, ...fields);
+    }
+    static async create(hasChanges) { /* returns { behavior:'insert', state, id, message } */ }
+    static async update(hasChanges, id) { /* returns { behavior:'update', state, id, message } */ }
+    static async fetchAfterSave(behavior, id) { /* second round-trip: sets created_by/create_date or modified_by/modify_date */ }
+}
+```
+
+`fetchAfterSave` is a mandatory second DB round-trip — the insert/update callbacks only return `{ state, id, message }`, not audit fields.
+
+### Status constants
+
+```javascript
+const CLOSED_STATUSES = ['3', '4']; // status '3' = Chuyển thành cơ hội, '4' = Loại
+const STATUS_CONVERTED = '3';       // show Btn_Convert only when '3'
+```
+
+Status `'3'` is simultaneously closed (hides Save/Delete) **and** converted (shows Btn_Convert) — these are not contradictory.
+
+### saveCrmLeads conventions
+
+- `cleId = $v(...)` — value of the ID item, not a boolean despite any "has" prefix temptation
+- `hasChanges = apex.gFormChange === 'Y'` — direct equality, not `['Y'].includes(...)`
+- `fetchAfterSave` called only inside `state === 'success'` block, not on every result
+- Returns `true` when no changes (not an error — form simply unchanged)
+
+---
+
+## APEX UI Utility Patterns
+
+### moveDrawerButtons — two variants
+
+**Inline dialog** (content is in the same document):
+```javascript
+function moveDrawerButtons() {
+    var $dialog   = apex.jQuery('#Fm_Cle').closest('.ui-dialog');
+    var $closeBtn = $dialog.find('.ui-dialog-titlebar-close');
+    if ($dialog.data('drawer-btns-moved')) return;
+
+    var $wrapper = apex.jQuery('<span style="display:inline-flex;align-items:center;gap:4px;margin-right:6px;vertical-align:middle;"></span>');
+    $wrapper.append(apex.jQuery('#Btn_Delete')).append(apex.jQuery('#Btn_Save_Cle'));
+    $closeBtn.before($wrapper);
+    $dialog.data('drawer-btns-moved', true);
+}
+```
+
+**iframe dialog** (content loads in `<iframe>` — cannot move DOM cross-frame, use proxy):
+```javascript
+function moveDrawerButtons() {
+    var $iframe   = apex.jQuery('.ui-dialog iframe').first();
+    if (!$iframe.length) return;
+    var $dialog   = $iframe.closest('.ui-dialog');
+    var $closeBtn = $dialog.find('.ui-dialog-titlebar-close');
+    if ($dialog.data('drawer-btns-moved')) return;
+
+    var iframeDoc = $iframe[0].contentDocument;
+    if (!iframeDoc || iframeDoc.readyState !== 'complete') return;
+
+    var $wrapper = apex.jQuery('<span style="display:inline-flex;align-items:center;gap:4px;margin-right:6px;vertical-align:middle;"></span>');
+    ['Btn_Delete', 'Btn_Save_Cle'].forEach(function(id) {
+        var srcBtn = iframeDoc.getElementById(id);
+        if (!srcBtn) return;
+        var $proxy = apex.jQuery(srcBtn.cloneNode(true));
+        $proxy[0].style.display = srcBtn.style.display;
+        $proxy.on('click', function() { iframeDoc.getElementById(id).click(); });
+        // Sync $x_Show/$x_Hide visibility
+        new MutationObserver(function() { $proxy[0].style.display = srcBtn.style.display; })
+            .observe(srcBtn, { attributes: true, attributeFilter: ['style'] });
+        $wrapper.append($proxy);
+    });
+    if (!$wrapper.children().length) return;
+    $closeBtn.before($wrapper);
+    $dialog.data('drawer-btns-moved', true);
+}
+```
+
+Call `moveDrawerButtons()` after the iframe has fully loaded. The data attribute guard makes it idempotent.
+
+### watchRdsTabs — APEX 24.2 Region Display Selector
+
+**Do not use `click` event** — APEX RDS intercepts it internally. Use `MutationObserver` on `aria-selected`:
+
+```javascript
+function watchRdsTabs(callback) {
+    var rdsLinks = document.querySelectorAll('#rds .a-RDS-link');
+    if (!rdsLinks.length) return;
+    var observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+            if (m.target.getAttribute('aria-selected') === 'true') {
+                callback(m.target.getAttribute('href').replace('#', '')); // e.g. 'Fm_Cle'
+            }
+        });
+    });
+    rdsLinks.forEach(function(link) {
+        observer.observe(link, { attributes: true, attributeFilter: ['aria-selected'] });
+    });
+    return observer;
+}
+
+// getActiveTab needs null guard — aria-selected may not be set yet at $(document).ready
+function getActiveTab() {
+    var href = apex.jQuery('#rds .a-RDS-link[aria-selected="true"]').attr('href');
+    return href ? href.replace('#', '') : null;
+}
+```
+
+---
 
 ## BMad Development Workflow
 
