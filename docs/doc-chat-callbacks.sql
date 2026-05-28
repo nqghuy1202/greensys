@@ -1,18 +1,20 @@
 -- ===========================================================
 -- DOC CHAT MODAL — APEX Ajax Callbacks
--- Tất cả tạo là APPLICATION PROCESS (Shared Components → Application Processes)
--- type: Ajax Callback — KHÔNG phải page-level callback.
+-- Tất cả tạo là PAGE-LEVEL AJAX CALLBACK trên page 10022710201
+-- (Page 10022710201 → Processing → Ajax Callback)
 -- ===========================================================
 --
--- LÝ DO: apex.server.process() với pageId không định tuyến đúng đến page-level
--- callback khi gọi từ trang khác. Application Process callable từ mọi trang,
--- không cần pageId, và là pattern chuẩn cho toàn bộ hệ thống chat.
+-- LÝ DO: Các callback này ONLY được gọi từ JSX chạy trên chính page 10022710201
+-- (APEX Modal Dialog). Dùng page-level callback để dễ kiểm soát và bảo trì;
+-- apex.server.process({ pageId: 10022710201 }) hoạt động chính xác vì call và
+-- callback cùng nằm trên một page.
 --
 -- Callbacks relay → Node.js dùng :APP_USER để lấy aus_id (an toàn hơn :G_AUS_ID).
 -- Callbacks đọc DB trực tiếp dùng aus_id từ g_x01 hoặc không cần auth.
 --
 -- LOAD ORDER trong doc-chat-app.jsx:
---   apexCall() → apex.server.process(...) không có pageId (Application Process)
+--   apexCall()    → apex.server.process({ pageId: 10022710201 })  ← 8 callbacks này
+--   apexCallApp() → apex.server.process() không có pageId          ← chatContactList (App Process)
 -- ===========================================================
 
 

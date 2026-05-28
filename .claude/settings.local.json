@@ -29,7 +29,10 @@
       "Bash(node -e ' *)",
       "Bash(node *)",
       "Bash(git restore *)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(Get-ChildItem -Path \"D:\\\\nodejs-apex-oracle\" -Recurse -File)",
+      "Bash(Select-Object FullName, Length)",
+      "Bash(Sort-Object FullName)"
     ]
   },
   "enabledPlugins": {

@@ -6,8 +6,31 @@ const { useState, useEffect, useRef, useCallback } = React;
 const CURRENT_AUS_ID = Number(window.CHAT_AUS_ID || 0);
 const POLL_BACKOFF_MAX = 30000;
 
-// Call an Application Process (doc-chat callbacks are Application Processes, not page-level)
+const MODAL_PAGE_ID = 10022710201;
+
+// Call an Ajax Callback on the modal page (doc-chat callbacks are page-level on page 10022710201)
 function apexCall(processName, params = {}) {
+  return new Promise((resolve, reject) => {
+    apex.server.process(processName,
+      {
+        x01: String(params.x01 !== undefined ? params.x01 : ''),
+        x02: String(params.x02 !== undefined ? params.x02 : ''),
+        x03: String(params.x03 !== undefined ? params.x03 : ''),
+        x04: String(params.x04 !== undefined ? params.x04 : ''),
+        x05: String(params.x05 !== undefined ? params.x05 : ''),
+      },
+      {
+        dataType: 'json',
+        pageId:   MODAL_PAGE_ID,
+        success:  resolve,
+        error:    (jqXHR, err) => reject(new Error(jqXHR.responseText || err || 'APEX error'))
+      }
+    );
+  });
+}
+
+// Call an Application Process (no pageId) — for shared processes like chatContactList
+function apexCallApp(processName, params = {}) {
   return new Promise((resolve, reject) => {
     apex.server.process(processName,
       {
@@ -25,9 +48,6 @@ function apexCall(processName, params = {}) {
     );
   });
 }
-
-// Alias kept for backward compatibility — same as apexCall (Application Process, no pageId needed)
-const apexCallApp = apexCall;
 
 function fmtPreviewTime(dateStr) {
   if (!dateStr) return '';
@@ -260,6 +280,88 @@ const DocChatApp = ({ context, onClose }) => {
     }
   }, [loadingConvs]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Parent dialog titlebar setup ─────────────────────────────────────────────
+  // Inject doc info + info-panel toggle button into the jQuery UI dialog titlebar.
+  // Works because both parent page and iframe are same-origin (same ORDS server).
+  useEffect(() => {
+    var SVG_LOGO  = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>';
+    var SVG_PANEL = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/></svg>';
+
+    // Expose toggle for the button click handler (closure captures iframe window)
+    window.docChatToggleInfo = () => setInfoOpen(v => !v);
+
+    try {
+      var parentDoc = parent.document;
+      var $p = (parent.apex && parent.apex.jQuery) || parent.$;
+
+      // Inject titlebar CSS into parent document (once)
+      if (!parentDoc.getElementById('dc-titlebar-style')) {
+        var style = parentDoc.createElement('style');
+        style.id = 'dc-titlebar-style';
+        style.textContent = [
+          '.ui-dialog-titlebar{display:flex!important;align-items:center!important;gap:6px!important;padding:0 10px 0 16px!important;min-height:46px!important;}',
+          '.ui-dialog-title{flex:1!important;min-width:0!important;overflow:visible!important;font-size:13px!important;font-weight:600!important;margin:0!important;padding:0!important;line-height:1.3!important;}',
+          '.ui-dialog-titlebar-close{position:static!important;top:auto!important;right:auto!important;transform:none!important;margin:0!important;margin-inline-start:0!important;margin-inline-end:0!important;flex-shrink:0!important;}',
+          '.dc-title-wrap{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden;}',
+          '.dc-title-icon{width:24px;height:24px;border-radius:5px;background:#E8F5EE;color:#2D9D5C;display:grid;place-items:center;flex-shrink:0;}',
+          '.dc-title-text{font-size:13.5px;font-weight:600;color:#15202B;}',
+          '.dc-title-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 10px;background:#E8F5EE;color:#1F7444;font-size:11.5px;font-weight:500;border-radius:999px;border:1px solid #D4ECDF;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px;}',
+          '#dc-info-btn{width:28px;height:28px;border-radius:5px;display:grid;place-items:center;cursor:pointer;border:0;background:transparent;color:#7A848F;padding:0;flex-shrink:0;transition:background .15s,color .15s;outline:0;}',
+          '#dc-info-btn:hover{background:#F4F6F8;color:#15202B;}',
+          '#dc-info-btn.is-active{background:#E8F5EE;color:#1F7444;}',
+        ].join('');
+        parentDoc.head.appendChild(style);
+      }
+
+      // Build title HTML
+      var pill = context.doc_no
+        ? '<span class="dc-title-pill">' +
+            (context.doc_type ? context.doc_type + ' · ' : '') +
+            context.doc_no +
+            (context.doc_label ? ' · ' + context.doc_label : '') +
+          '</span>'
+        : '';
+      $p('.ui-dialog-title').html(
+        '<span class="dc-title-wrap">' +
+          '<span class="dc-title-icon">' + SVG_LOGO + '</span>' +
+          '<span class="dc-title-text">Trao đổi chứng từ</span>' +
+          pill +
+        '</span>'
+      );
+
+      // Inject info-panel toggle button (before the X close button)
+      if (!parentDoc.getElementById('dc-info-btn')) {
+        var btn = parentDoc.createElement('button');
+        btn.id   = 'dc-info-btn';
+        btn.type = 'button';
+        btn.title = 'Th\xf4ng tin chứng từ';
+        btn.innerHTML = SVG_PANEL;
+        btn.onclick = function () {
+          if (window.docChatToggleInfo) window.docChatToggleInfo();
+        };
+        $p('.ui-dialog-titlebar-close').before(btn);
+      }
+    } catch (e) {
+      console.warn('[DocChat] titlebar setup failed:', e);
+    }
+
+    return function () {
+      delete window.docChatToggleInfo;
+      try {
+        parent.$('#dc-info-btn').remove();
+        parent.$('#dc-titlebar-style').remove();
+      } catch (e2) {}
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync info-panel button active state whenever infoOpen changes
+  useEffect(() => {
+    try {
+      var $p = (parent.apex && parent.apex.jQuery) || parent.$;
+      $p('#dc-info-btn').toggleClass('is-active', infoOpen);
+    } catch (e) {}
+  }, [infoOpen]);
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   const activeConv     = conversations.find(c => c.conv_id === activeConvId) || null;
@@ -271,30 +373,7 @@ const DocChatApp = ({ context, onClose }) => {
   return (
     <div className="modal">
 
-        {/* ── Header ─────────────────────────────────────────────────────────── */}
-        <div className="modal-header">
-          <div className="modal-title">
-            <div className="modal-title-icon">
-              <window.Icons.Logo size={16} />
-            </div>
-            Trao đổi chứng từ
-          </div>
-          <div className="modal-doc-pill">
-            <window.Icons.Hash size={12} />
-            {context.doc_no}{context.doc_label ? ` · ${context.doc_label}` : ''}
-          </div>
-          <div className="modal-header-actions">
-            <button type="button" className={`icon-btn ${infoOpen ? 'active' : ''}`}
-              title="Thông tin chứng từ" onClick={() => setInfoOpen(v => !v)}>
-              <window.Icons.PanelR size={16} />
-            </button>
-            <button type="button" className="icon-btn danger" title="Đóng" onClick={onClose}>
-              <window.Icons.X size={16} />
-            </button>
-          </div>
-        </div>
-
-        {/* ── Body ───────────────────────────────────────────────────────────── */}
+        {/* ── Body — fills full dialog content area (no internal header) ─────── */}
         <div className={`modal-body ${infoOpen && activeConv ? 'with-info' : ''}`}>
 
           {/* Left pane — conversation list */}
@@ -380,11 +459,11 @@ const DocChatApp = ({ context, onClose }) => {
   } catch (_) {}
 
   var context = {
-    doc_type:   stored.doc_type   || $v('P_DOC_TYPE')   || '',
-    doc_no:     stored.doc_no     || $v('P_DOC_NO')     || '',
-    doc_label:  stored.doc_label  || $v('P_DOC_LABEL')  || '',
-    doc_status: stored.doc_status || $v('P_DOC_STATUS') || '',
-    doc_total:  stored.doc_total  || $v('P_DOC_TOTAL')  || '',
+    doc_type:   stored.doc_type   || $v('P10022710201_DOC_TYPE')   || '',
+    doc_no:     stored.doc_no     || $v('P10022710201_DOC_NO')     || '',
+    doc_label:  stored.doc_label  || $v('P10022710201_DOC_LABEL')  || '',
+    doc_status: stored.doc_status || $v('P10022710201_DOC_STATUS') || '',
+    doc_total:  stored.doc_total  || $v('P10022710201_DOC_TOTAL')  || '',
     doc_fields: stored.doc_fields || [],
   };
 
