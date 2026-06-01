@@ -1,5 +1,31 @@
 # APEX Patterns
 
+## Page Item Naming Convention — Critical
+
+**Tất cả APEX page** khai báo trong **Function and Global Variable Declaration**:
+
+```javascript
+var pageId = $v('pFlowStepId');
+```
+
+Page items đặt tên theo pattern `P${pageId}_ITEM_NAME`. Ví dụ trên page 10022710201:
+- `P10022710201_DOC_TYPE`, `P10022710201_CONV_ID`, `P10022710201_MSG_BODY`...
+
+Trong JavaScript, luôn dùng:
+```javascript
+// Đọc
+$v('P' + pageId + '_CONV_ID')
+
+// Ghi
+$s('P' + pageId + '_CONV_ID', value)
+// hoặc APEX 24.x:
+apex.item('P' + pageId + '_CONV_ID').setValue(value)
+```
+
+**Không dùng** `$v('P_CONV_ID')` (thiếu pageId prefix) — items không tìm thấy.
+
+---
+
 ## Navigation — Opening Pages / Dialogs from JavaScript
 
 ### Problem

@@ -32,7 +32,18 @@
       "Bash(cd:*)",
       "Bash(Get-ChildItem -Path \"D:\\\\nodejs-apex-oracle\" -Recurse -File)",
       "Bash(Select-Object FullName, Length)",
-      "Bash(Sort-Object FullName)"
+      "Bash(Sort-Object FullName)",
+      "Bash(dir /s /b D:\\\\nodejs-apex-oracle)",
+      "Bash(ls -lh docs/ docs/claude/)",
+      "Bash(ls -lh chat_system_erp/ doc-chat/)",
+      "Bash(wc -l chat-server/server.js chat-server/chat.js chat-server/cqn.js)",
+      "Bash(ls -lh chat-server/server.js chat-server/chat.js chat-server/cqn.js)",
+      "Bash(cat docs/claude/08-archive.md)",
+      "Bash(ls -la socket/)",
+      "Bash(git mv *)",
+      "Bash(gh api *)",
+      "Bash(grep *)",
+      "WebFetch(domain:api.anthropic.com)"
     ]
   },
   "enabledPlugins": {

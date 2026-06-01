@@ -358,6 +358,7 @@ BEGIN
   l_payload := JSON_OBJECT(
     'conv_id'         VALUE TO_NUMBER(apex_application.g_x01),
     'aus_id'          VALUE l_aus_id,
+    'username'        VALUE :APP_USER,
     'body'            VALUE apex_application.g_x02,
     'reply_to_msg_id' VALUE NULLIF(TRIM(apex_application.g_x03), ''),
     'partner_aus_id'  VALUE NULLIF(TRIM(apex_application.g_x04), '')
@@ -367,20 +368,28 @@ BEGIN
   UTL_HTTP.SET_TRANSFER_TIMEOUT(10);
   l_url := 'http://172.25.10.38:3410/api/chat/send';
   l_req  := UTL_HTTP.BEGIN_REQUEST(l_url, 'POST', 'HTTP/1.1');
-  UTL_HTTP.SET_HEADER(l_req, 'Content-Type',   'application/json');
-  UTL_HTTP.SET_HEADER(l_req, 'Content-Length',  LENGTHB(l_payload));
-  UTL_HTTP.WRITE_TEXT(l_req, l_payload);
+  UTL_HTTP.SET_HEADER(l_req, 'Content-Type',   'application/json; charset=utf-8');
+  UTL_HTTP.SET_HEADER(l_req, 'Connection',     'close');
+  UTL_HTTP.SET_HEADER(l_req, 'Content-Length',  TO_CHAR(UTL_RAW.LENGTH(UTL_RAW.CAST_TO_RAW(l_payload))));
+  UTL_HTTP.WRITE_RAW(l_req, UTL_RAW.CAST_TO_RAW(l_payload));
   l_resp := UTL_HTTP.GET_RESPONSE(l_req);
   BEGIN
     LOOP UTL_HTTP.READ_TEXT(l_resp, l_buffer, 32767); l_body := l_body || l_buffer; END LOOP;
   EXCEPTION WHEN UTL_HTTP.END_OF_BODY THEN NULL;
   END;
   UTL_HTTP.END_RESPONSE(l_resp);
-  HTP.p(l_body);
+
+  -- Relay nguyên response của Node.js (kể cả {"error":"..."} khi 5xx)
+  IF l_resp.status_code BETWEEN 200 AND 299 THEN
+    HTP.p(l_body);
+  ELSE
+    HTP.p('{"error":"Node ' || l_resp.status_code || ': ' || REPLACE(l_body, '"', '''') || '"}');
+  END IF;
 EXCEPTION
   WHEN OTHERS THEN
     BEGIN UTL_HTTP.END_RESPONSE(l_resp); EXCEPTION WHEN OTHERS THEN NULL; END;
-    HTP.p('{"error":"' || REPLACE(SQLERRM,'"','') || '"}');
+    -- ORA-29273 thường do Node.js trả 5xx hoặc mất kết nối
+    HTP.p('{"error":"UTL_HTTP: ' || REPLACE(SQLERRM, '"', '''') || '"}');
 END;
 
 

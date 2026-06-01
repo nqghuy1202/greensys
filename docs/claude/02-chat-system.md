@@ -1,13 +1,13 @@
 # Chat System v2
 
-Full-page chat UI. Source: `chat_system_erp/`. APEX page type: **Normal** (not Modal).
+Full-page chat UI. Source: `chat-system/`. APEX page type: **Normal** (not Modal).
 
 ## Backend (`chat-server/chat.js`)
 
 - Express router mounted at `/api/chat` in `server.js`
 - `withConn(fn)` utility: gets pool connection, calls `fn(conn)`, closes in finally — use for all DB queries
 - `normalize(rows)` utility: lowercases Oracle UPPERCASE column names before `res.json()`
-- `chatWaiters` Map: `aus_id → { res, timeout }` — one long-poll per user (last tab wins)
+- Event delivery via `events.js` `deliverToUser` — unified waiter map shared with notification system
 - `typingState` Map: `conv_id:aus_id → expireHandle` — auto-clears after 4s
 - `onlineUsers` Map: `aus_id → Date.now()` — legacy; presence now also in `CHAT_USER_ONLINE` table
 - `participantCache` Map: `conv_id → { ausIds: number[], expiresAt }` — 60s TTL cache of `CHAT_PARTICIPANTS`
@@ -21,7 +21,7 @@ Full-page chat UI. Source: `chat_system_erp/`. APEX page type: **Normal** (not M
 tweaks-panel.jsx → icons.jsx → chat-thread.jsx → page-compose.jsx → page-list.jsx → page-main.jsx → page-app.jsx
 ```
 
-Additional files in `chat_system_erp/` (not all loaded on main chat page): `info-panel.jsx`, `conversation-list.jsx`, `empty-state.jsx`, `page-rail.jsx`, `erp-bg.jsx`, `app.jsx`.
+Additional files in `chat-system/` (not all loaded on main chat page): `info-panel.jsx`, `conversation-list.jsx`, `empty-state.jsx`, `page-rail.jsx`, `erp-bg.jsx`, `app.jsx`.
 
 Files uploaded to `#APP_FILES#chat-system/`.
 
@@ -57,7 +57,8 @@ All chat callbacks are **Application Processes** (Shared Components → Applicat
 - **Page-level:** requires correct `pageId` — does not route from other pages in APEX 24.2 → `parsererror` ("Process not found")
 - **Application Process:** no `pageId` needed, callable from any page
 
-9 Chat System processes: `chatConvList`, `chatMsgList`, `chatMemberList`, `chatContactList`, `chatSend`, `chatCreate`, `chatRead`, `chatTyping`, `chatEvents`.
+8 Chat System Application Processes: `chatConvList`, `chatMsgList`, `chatMemberList`, `chatContactList`, `chatSend`, `chatCreate`, `chatRead`, `chatTyping`.
+(`chatEvents` removed — real-time delivery now via unified `appEvents` → `apex:chatEvent` jQuery event.)
 Full SQL: `docs/chat_apex_callbacks_v2.sql`.
 
 ### :APP_USER Pattern (required in all Application Processes)
@@ -73,10 +74,6 @@ EXCEPTION WHEN NO_DATA_FOUND THEN
   HTP.p('{"error":"user_not_found"}'); RETURN;
 END;
 ```
-
-### chatEvents Long-poll
-
-Uses `UTL_HTTP.SET_TRANSFER_TIMEOUT(28)` — 3s buffer over Node's 25s timeout.
 
 ### chatSend Parameters (x01–x04)
 

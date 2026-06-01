@@ -166,3 +166,40 @@ Values containing commas (currency amounts), Unicode, or JSON arrays cannot be s
 
 - **CSS files**: can be pasted into Page → CSS → Inline (APEX limit ~32KB)
 - **JSX files**: must remain as Static Application Files — contain JSX syntax requiring `Babel.transform()` at runtime via `fetch()`
+
+### IIFE scope — Dynamic Actions cannot call private functions
+
+`dcJson`, `closeCompose`, `loadConvList`, `selectConv`, `sendMessage` etc. are private inside the `(function($){...})(apex.jQuery)` IIFE in `doc-chat-page.js`. Dynamic Action "Execute JavaScript Code" runs in global scope → `ReferenceError: dcJson is not defined`.
+
+**Fix:** Expose via `window.dc*` at the bottom of the IIFE (already done in `doc-chat-page.js`). In DA code, use `window.dcCloseCompose()`, `window.dcSendMessage()`, etc. — never bare function names.
+
+```javascript
+// DA code — correct:
+window.dcSendMessage();
+window.dcLoadConvList(function() { window.dcSelectConv(convId); });
+
+// In-IIFE code — correct (dcJson visible here):
+dcJson('docChatCreate', { ... }, function(data) { ... });
+```
+
+## UTL_HTTP — POST requests
+
+### BadRequestError: request aborted — thiếu `Connection: close`
+
+HTTP/1.1 mặc định keep-alive. Khi Oracle gửi POST mà không có `Connection: close`, Node.js body parser (`raw-body`) thấy socket đóng sớm → `BadRequestError: request aborted`.
+
+**Fix bắt buộc cho mọi POST callback:**
+
+```sql
+l_req := UTL_HTTP.BEGIN_REQUEST(l_url, 'POST', 'HTTP/1.1');
+UTL_HTTP.SET_HEADER(l_req, 'Content-Type',   'application/json; charset=utf-8');
+UTL_HTTP.SET_HEADER(l_req, 'Connection',     'close');                                    -- bắt buộc
+UTL_HTTP.SET_HEADER(l_req, 'Content-Length',  TO_CHAR(UTL_RAW.LENGTH(UTL_RAW.CAST_TO_RAW(l_payload))));
+UTL_HTTP.WRITE_RAW(l_req, UTL_RAW.CAST_TO_RAW(l_payload));                               -- WRITE_RAW, không phải WRITE_TEXT
+```
+
+- `Connection: close` — tránh keep-alive gây abort
+- `UTL_RAW.CAST_TO_RAW` + `WRITE_RAW` — đếm và gửi đúng UTF-8 bytes
+- `LENGTHB` / `WRITE_TEXT` — sai vì dùng charset DB (WE8MSWIN1252), Content-Length lệch với byte thực tế
+
+Callbacks GET (appEvents, docChatRead, docChatTyping) dùng `WRITE_TEXT` là đúng vì không có body.

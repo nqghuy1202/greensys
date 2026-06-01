@@ -1,17 +1,15 @@
 'use strict';
 const express  = require('express');
 const oracledb = require('oracledb');
+const { deliverToUser } = require('./events');
 
 const router = express.Router();
 
 // ─── In-memory state ─────────────────────────────────────────────────────────
-// Mỗi user chỉ có 1 waiter tại 1 thời điểm (tab cuối cùng thắng)
-const chatWaiters      = new Map();   // aus_id(string) → { res, timeout }
 const typingState      = new Map();   // `${conv_id}:${aus_id}` → expireHandle
 const onlineUsers      = new Map();   // aus_id(string) → Date.now()
 const participantCache = new Map();   // conv_id(number) → { ausIds: number[], expiresAt: number }
 
-const POLL_TIMEOUT          = 25_000;   // 25s — long-poll timeout
 const TYPING_TTL            =  4_000;   // 4s  — tự xóa typing nếu không có heartbeat
 const ONLINE_TTL            = 35_000;   // 35s — đánh dấu offline nếu không heartbeat
 const PARTICIPANT_CACHE_TTL = 60_000;   // 60s — cache participant list mỗi conv
@@ -32,16 +30,6 @@ const normalize = rows =>
   rows.map(row => Object.fromEntries(
     Object.entries(row).map(([k, v]) => [k.toLowerCase(), v])
   ));
-
-// Đẩy event tới 1 user đang long-poll (nếu có)
-function deliverToUser(ausId, payload) {
-  const key = String(ausId);
-  const w   = chatWaiters.get(key);
-  if (!w) return;
-  clearTimeout(w.timeout);
-  w.res.json({ events: [payload] });
-  chatWaiters.delete(key);
-}
 
 // Participant list với 60s cache — tránh query DB mỗi lần typing/read event
 async function getParticipants(convId) {
@@ -339,35 +327,6 @@ router.post('/send', async (req, res) => {
   }
 });
 
-// ─── GET /api/chat/events/:aus_id ────────────────────────────────────────────
-// Long-poll: treo kết nối tối đa 25s, trả về ngay khi có event mới
-router.get('/events/:aus_id', (req, res) => {
-  const key = String(req.params.aus_id);
-
-  // Đóng waiter cũ nếu có (tab mới thay thế tab cũ)
-  const old = chatWaiters.get(key);
-  if (old) {
-    clearTimeout(old.timeout);
-    old.res.json({ events: [], status: 'replaced' });
-  }
-
-  const timeout = setTimeout(() => {
-    chatWaiters.delete(key);
-    res.json({ events: [], status: 'timeout' });
-  }, POLL_TIMEOUT);
-
-  chatWaiters.set(key, { res, timeout });
-
-  // Client đóng kết nối sớm (navigate đi trang khác)
-  req.on('close', () => {
-    const w = chatWaiters.get(key);
-    if (w && w.res === res) {
-      clearTimeout(w.timeout);
-      chatWaiters.delete(key);
-    }
-  });
-});
-
 // ─── POST /api/chat/typing/:conv_id/:aus_id ──────────────────────────────────
 // Frontend gọi khi user đang nhập; tự expire sau TYPING_TTL ms
 router.post('/typing/:conv_id/:aus_id', (req, res) => {
@@ -577,4 +536,4 @@ router.post('/create', async (req, res) => {
   }
 });
 
-module.exports = { router, chatWaiters, onlineUsers };
+module.exports = { router, onlineUsers };

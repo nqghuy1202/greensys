@@ -25,8 +25,8 @@ Server A — Oracle APEX 24.2 (erp.greensys.vn:8211)
 Server B — Node.js 22 (172.25.10.38)
   chat-server/server.js  listening on PORT 3410
     ├── GET  /health
-    ├── GET  /api/wait/:aus_id         (notification long-poll — 25s)
-    ├── GET  /api/notify/:aus_id       (manual trigger)
+    ├── GET  /api/events/:aus_id       (unified long-poll — notification + chat, 25s)
+    ├── GET  /api/notify/:aus_id       (manual trigger, debug)
     └── /api/chat/*                    (chat module — chat.js router)
 ```
 
@@ -56,7 +56,7 @@ pm2 status
 npm run test:connection          # DB connection only
 npm run test:cqn                 # CQN standalone (stop server first)
 curl "http://localhost:3410/health"
-curl "http://localhost:3410/api/wait/<aus_id>"
+curl "http://localhost:3410/api/events/<aus_id>"
 curl "http://localhost:3410/api/chat/conversations/<aus_id>"
 ```
 
@@ -77,12 +77,11 @@ curl "http://localhost:3410/api/chat/conversations/<aus_id>"
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/health` | Health check |
-| GET | `/api/wait/:aus_id` | Notification long-poll (25s) |
-| GET | `/api/notify/:aus_id` | Manual notification trigger |
+| GET | `/api/events/:aus_id` | **Unified long-poll (25s)** — notification + chat events |
+| GET | `/api/notify/:aus_id` | Manual notification trigger (debug) |
 | GET | `/api/chat/conversations/:aus_id` | Sidebar list |
 | GET | `/api/chat/messages/:conv_id` | Message history |
 | POST | `/api/chat/send` | Send message |
-| GET | `/api/chat/events/:aus_id` | Chat long-poll (25s) |
 | POST | `/api/chat/read/:conv_id/:aus_id` | Mark read |
 | POST | `/api/chat/typing/:conv_id/:aus_id` | Typing indicator |
 | POST | `/api/chat/heartbeat/:aus_id` | Online presence |
@@ -90,6 +89,20 @@ curl "http://localhost:3410/api/chat/conversations/<aus_id>"
 | GET | `/api/chat/members/:conv_id` | Conversation members |
 | POST | `/api/chat/create` | Create DM or CHANNEL |
 | GET | `/api/chat/doc-conversations` | Doc-scoped conversations (query: doc_type, doc_no, aus_id) |
+
+## Unified Long-poll Response Types
+
+`GET /api/events/:aus_id` → responses dispatched to `$(document).trigger('apex:chatEvent', [ev])` in browser:
+
+| `type` | Payload | Handler |
+|--------|---------|---------|
+| `notification` | — | Refresh bell (`apex.region('notification-menu').refresh()`) |
+| `message` | `{ conv_id, msg: { msg_id, from_aus_id, from_name, body, ... } }` | Chat/Doc-chat appends message |
+| `typing` | `{ conv_id, aus_id }` | Show typing indicator |
+| `typing_stop` | `{ conv_id, aus_id }` | Clear typing indicator |
+| `read` | `{ conv_id, aus_id }` | Update read receipts |
+| `timeout` | — | APEX re-polls immediately |
+| `replaced` | — | Previous tab's poll displaced (new tab opened) |
 
 ## Unicode Encoding — Critical
 

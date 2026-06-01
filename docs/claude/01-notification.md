@@ -7,7 +7,7 @@
 **Internal state:**
 - `rowidCache` Map (rowid → aus_id) — loaded from DB on startup; INSERT adds, DELETE reads-and-removes
 - `RETRY_INTERVAL_MS = 15s` auto-reconnect on CQN subscription failure
-- Calls `emitFn(ausId)` which maps to `notifyWaiters` in `server.js`
+- Calls `emitFn(ausId)` which maps to `notifyUser` in `events.js`
 
 **CQN rules:**
 - Uses `ipAddress/port` callback — `clientInitiated: true` requires Oracle 19.4+, not available here
@@ -17,50 +17,13 @@
 - `table.operation & oracledb.CQN_OPCODE_DELETE` distinguishes DELETE from INSERT
 
 **Long-poll push flow:**
-CQN fires → `notifyWaiters(ausId)` → resolves pending `/api/wait/:aus_id` response → browser refreshes bell → immediately polls again.
+CQN fires → `notifyUser(ausId)` (events.js) → resolves pending `/api/events/:aus_id` response → browser sees `type:'notification'` → refreshes bell → immediately polls again.
 
 **`waiters`** Map in `server.js`: `aus_id(string) → [{ res, timeout }]` — resolved on CQN event or 25s timeout. `req.on('close')` cleans up early if browser navigates away.
 
 **Graceful shutdown:** `server.js` handles `SIGTERM`/`SIGINT` — drains all pending long-poll waiters (sends `timeout` response), closes HTTP server, then closes DB pool. pm2 sends `SIGTERM` on restart.
 
 ## APEX Ajax Callbacks
-
-### notificationWait (Page 0 — runs on every page)
-
-```sql
-DECLARE
-    l_url    VARCHAR2(500);
-    l_req    UTL_HTTP.REQ;
-    l_resp   UTL_HTTP.RESP;
-    l_body   VARCHAR2(32767) := '';
-    l_buffer VARCHAR2(32767);
-BEGIN
-    OWA_UTIL.MIME_HEADER('application/json', TRUE, 'UTF-8');
-    IF :G_AUS_ID IS NULL THEN
-        HTP.p('{"status":"timeout"}');
-        RETURN;
-    END IF;
-    l_url := 'http://172.25.10.38:3410/api/wait/' || :G_AUS_ID;
-    UTL_HTTP.SET_TRANSFER_TIMEOUT(28);
-    l_req  := UTL_HTTP.BEGIN_REQUEST(l_url, 'GET', 'HTTP/1.1');
-    UTL_HTTP.SET_HEADER(l_req, 'Connection', 'close');
-    l_resp := UTL_HTTP.GET_RESPONSE(l_req);
-    BEGIN
-        LOOP
-            UTL_HTTP.READ_TEXT(l_resp, l_buffer, 32767);
-            l_body := l_body || l_buffer;
-        END LOOP;
-    EXCEPTION
-        WHEN UTL_HTTP.END_OF_BODY THEN NULL;
-    END;
-    UTL_HTTP.END_RESPONSE(l_resp);
-    HTP.p(l_body);
-EXCEPTION
-    WHEN OTHERS THEN
-        BEGIN UTL_HTTP.END_RESPONSE(l_resp); EXCEPTION WHEN OTHERS THEN NULL; END;
-        HTP.p('{"status":"timeout"}');
-END;
-```
 
 ### chatHeartbeat (Page 0 — every 20s from global.js)
 
@@ -84,27 +47,36 @@ END;
 
 ## Browser Poll Loop (APEX Theme global.js)
 
-Paste into `Shared Components → Themes → Edit → JavaScript` (runs on every page):
+Paste into `Shared Components → Themes → Edit → JavaScript` (runs on every page).
+
+**Unified poll** — one ORDS thread per user (was two: notificationWait + chatEvents).  
+`apex:chatEvent` jQuery event is dispatched to any page-level listeners (Chat System, Doc Chat).
 
 ```javascript
 (function () {
     'use strict';
-    if (window._notifyPoll) return;
+    if (window._eventsPoll) return;
 
     $(document).ready(function () {
         var ausId = $v('P0_AUS_ID');
         if (!ausId) return;
 
-        window._notifyPoll = true;
+        window._eventsPoll = true;
         var _backoff = 5000;
 
         function poll() {
-            apex.server.process('notificationWait', {}, {
+            apex.server.process('appEvents', {}, {
                 dataType: 'json',
                 success: function (data) {
                     _backoff = 5000;
-                    if (data && data.status === 'new_notification') {
+                    if (!data) { poll(); return; }
+                    if (data.type === 'notification') {
                         apex.region('notification-menu').refresh();
+                    } else if (data.type === 'message' || data.type === 'typing' ||
+                               data.type === 'typing_stop' || data.type === 'read') {
+                        // Chat System (page-app.jsx) and Doc Chat (doc-chat-app.jsx)
+                        // both listen for this event.
+                        $(document).trigger('apex:chatEvent', [data]);
                     }
                     poll();
                 },
@@ -123,3 +95,49 @@ Paste into `Shared Components → Themes → Edit → JavaScript` (runs on every
 ```
 
 **`P0_AUS_ID`** is a Page 0 hidden item (has a DOM element, so `$v()` works). Do NOT use `$v('G_AUS_ID')` — always returns `""` because `G_AUS_ID` is an Application Item with no DOM element.
+
+## APEX Callback: appEvents (replaces notificationWait)
+
+**Page 0 — Ajax Callback** named `appEvents`:
+
+```sql
+DECLARE
+    l_url    VARCHAR2(500);
+    l_req    UTL_HTTP.REQ;
+    l_resp   UTL_HTTP.RESP;
+    l_body   VARCHAR2(32767) := '';
+    l_buffer VARCHAR2(32767);
+BEGIN
+    OWA_UTIL.MIME_HEADER('application/json', TRUE, 'UTF-8');
+    IF :G_AUS_ID IS NULL THEN
+        HTP.p('{"type":"timeout"}');
+        RETURN;
+    END IF;
+    l_url := 'http://172.25.10.38:3410/api/events/' || :G_AUS_ID;
+    UTL_HTTP.SET_TRANSFER_TIMEOUT(28);
+    l_req  := UTL_HTTP.BEGIN_REQUEST(l_url, 'GET', 'HTTP/1.1');
+    UTL_HTTP.SET_HEADER(l_req, 'Connection', 'close');
+    l_resp := UTL_HTTP.GET_RESPONSE(l_req);
+    BEGIN
+        LOOP
+            UTL_HTTP.READ_TEXT(l_resp, l_buffer, 32767);
+            l_body := l_body || l_buffer;
+        END LOOP;
+    EXCEPTION
+        WHEN UTL_HTTP.END_OF_BODY THEN NULL;
+    END;
+    UTL_HTTP.END_RESPONSE(l_resp);
+    HTP.p(l_body);
+EXCEPTION
+    WHEN OTHERS THEN
+        BEGIN UTL_HTTP.END_RESPONSE(l_resp); EXCEPTION WHEN OTHERS THEN NULL; END;
+        HTP.p('{"type":"timeout"}');
+END;
+```
+
+**Migration checklist (APEX side):**
+1. Create `appEvents` Page 0 Ajax Callback (SQL above)
+2. Update Theme global.js (code above) — removes `notificationWait` poll, adds `appEvents` poll
+3. Delete old `notificationWait` Page 0 Ajax Callback
+4. Delete old `chatEvents` Application Process (now handled via `apex:chatEvent` event in page-app.jsx)
+5. Delete old `docChatEvents` Page 10022710201 Ajax Callback (now handled via `apex:chatEvent` event in doc-chat-app.jsx)
