@@ -52,16 +52,18 @@ In `page-app.jsx`: `const currentAusId = Number(window.CHAT_AUS_ID || $v('G_AUS_
 
 ## Application Processes — Critical Distinction
 
-All chat callbacks are **Application Processes** (Shared Components → Application Processes, type: Ajax Callback), **not** page-level Ajax Callbacks.
+All chat callbacks are **page-level Ajax Callbacks** trên Messenger page — **không** dùng Application Process.
 
-- **Page-level:** requires correct `pageId` — does not route from other pages in APEX 24.2 → `parsererror` ("Process not found")
-- **Application Process:** no `pageId` needed, callable from any page
+> **Rule kiến trúc:** Application Process chỉ dùng cho tính năng toàn hệ thống (Page 0 — `appEvents`, `chatHeartbeat`). Mọi feature của một page cụ thể phải là Ajax Callback trên chính page đó.
 
-8 Chat System Application Processes: `chatConvList`, `chatMsgList`, `chatMemberList`, `chatContactList`, `chatSend`, `chatCreate`, `chatRead`, `chatTyping`.
+- **Page-level (đúng):** `apex.server.process(name, data, { pageId: window.pageId, ... })` — `window.pageId` được set trong "Function and Global Variable Declaration": `var pageId = $v('pFlowStepId')`
+- **Application Process (sai cho chat):** không có pageId scope, không quản lý được theo page
+
+8 Chat System Ajax Callbacks (tạo trên Messenger page): `chatConvList`, `chatMsgList`, `chatMemberList`, `chatContactList`, `chatSend`, `chatCreate`, `chatRead`, `chatTyping`.
 (`chatEvents` removed — real-time delivery now via unified `appEvents` → `apex:chatEvent` jQuery event.)
 Full SQL: `docs/chat_apex_callbacks_v2.sql`.
 
-### :APP_USER Pattern (required in all Application Processes)
+### :APP_USER Pattern (required in all Ajax Callbacks)
 
 ```sql
 IF :APP_USER IS NULL OR :APP_USER IN ('nobody','NOBODY') THEN

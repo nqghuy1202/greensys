@@ -32,13 +32,15 @@ curl http://localhost:3410/api/events/<aus_id>   # unified long-poll test
 [Server] Listening on 0.0.0.0:3410
 ```
 
+`chat-server/.env` is required (not committed). Variables: `DB_USER`, `DB_PASSWORD`, `DB_CONNECTION_STRING`, `PORT=3410`, `CQN_HOST=172.25.10.38`, `CQN_PORT=3141`, `DB_POOL_MIN/MAX/INCREMENT`. See `docs/claude/00-core.md` for full table.
+
 ## Feature Status
 
 | Feature | Status | Details |
 |---------|--------|---------|
 | Notification (CQN + long-poll) | ✅ Done | `docs/claude/01-notification.md` |
-| Chat System v2 (`chat-system/`) | 🚧 Active | `docs/claude/02-chat-system.md` |
-| Doc Chat Modal (page 10022710201) | 🚧 Active | `docs/claude/03-doc-chat.md` — inline compose done (2026-05-30) |
+| Chat System v2 (`chat-system/`) | 🚧 Active | `docs/claude/02-chat-system.md`. **Đang chuyển JSX → native APEX** (vanilla JS + HTML callbacks, giống Doc Chat) — `docs/chat-system-native-plan.md` |
+| Doc Chat Modal (page 10022710201) | 🚧 Active | `docs/claude/03-doc-chat.md` — native APEX, filter tabs done (2026-06-01) |
 | CRM Module (KHTN) | 📋 Planned | `docs/claude/06-crm.md` |
 
 ## Repository Structure
@@ -50,17 +52,26 @@ chat-server/          Node.js server (runs on Server B)
   chat.js             /api/chat/* router
   cqn.js              Oracle CQN subscription + ROWID cache
 
-chat-system/          Chat System Messenger (APEX JSX frontend)
+chat-system/          Chat System Messenger (Messenger page)
+  chat-page.js        Vanilla JS — native APEX version (active; replaces JSX)
+  chat-page.css       CSS scoped to #chat-root
+  *.jsx               Legacy React/JSX version (being phased out)
 doc-chat/             Doc Chat Modal (native APEX frontend)
   doc-chat-page.js    Vanilla JS — all page interactions
   doc-chat.css        CSS scoped to #doc-chat-root
 
 docs/
   claude/             Context docs loaded into every session (see @refs below)
+  reviews/            Review reports (apex-node-review output) — REVIEW-<scope>-<date>.md
+  chat-system-native.sql      8 page-level callbacks (4 HTML-returning + 4 action) for Messenger native
+  chat-system-native-plan.md  Conversion plan + 3-pane skeleton HTML for Messenger native
   doc-chat-native.sql 4 HTML-returning PL/SQL callbacks for Doc Chat
   doc-chat-callbacks.sql 4 JSON action callbacks for Doc Chat
+  chat_ddl.sql        Chat tables DDL
+  chat_apex_callbacks_v2.sql Chat System callbacks (JSON; legacy JSX era)
 
 _archive/             Legacy code (Socket.IO era, JSX files) — do not edit
+apex-component-modifier/  Separate nested git repo — independent project, do not modify
 ```
 
 ## Real-time Architecture
@@ -68,15 +79,23 @@ _archive/             Legacy code (Socket.IO era, JSX files) — do not edit
 ```
 Browser → apex.server.process('appEvents') → APEX PL/SQL (Page 0)
   → UTL_HTTP → GET /api/events/:aus_id (Node.js, 25s long-poll)
-  ← { type: 'notification' | 'message' | 'typing' | 'typing_stop' | 'timeout' }
+  ← { type: 'notification' | 'message' | 'typing' | 'typing_stop' | 'read' | 'replaced' | 'timeout' }
 
-Global JS (global.js):
+Global JS (global.js, runs on every page; iframes do NOT poll — they ride the parent's poll):
   type='notification' → apex.region('notification-menu').refresh()
-  type='message|typing|...' → $(document).trigger('apex:chatEvent', [ev])
+  type='message|typing|read|...' → $(document).trigger('apex:chatEvent', [ev])
 
-Chat System page-app.jsx + Doc Chat doc-chat-page.js both listen:
+Chat System chat-page.js (Messenger, same frame) + Doc Chat doc-chat-page.js (iframe) listen:
   $(document).on('apex:chatEvent', handler)
 ```
+
+⚠ **Cross-frame trap:** Doc Chat runs inside an **iframe**. It must bind the `apex:chatEvent`
+listener via `window.parent.apex.jQuery(window.parent.document)` — the **parent's** jQuery instance,
+NOT the iframe's `apex.jQuery`. jQuery custom events (`.trigger`) do not cross jQuery instances, so a
+handler bound by the iframe's jQuery is never invoked by the parent's trigger ("event arrives, UI
+doesn't update"). See `docs/claude/01-notification.md` and `docs/reviews/REVIEW-realtime-flow-2026-06-02.md`.
+
+`/api/events/:aus_id` is the **unified** endpoint — one ORDS thread per user. The old separate `notificationWait` + `chatEvents` polls (2 threads/user) have been merged here. The endpoint is **lossy single-shot** (one waiter/user); chat events that arrive with no waiter parked are buffered in `events.js` (at-least-once across the re-poll gap) — notifications self-heal via DB re-query.
 
 ## BMad Development Workflow
 
@@ -85,8 +104,9 @@ Chat System page-app.jsx + Doc Chat doc-chat-page.js both listen:
 | `/bmad-quick-dev` | Build/fix/refactor any code |
 | `/bmad-investigate` | Trace bugs or understand unfamiliar code |
 | `/bmad-code-review` | Adversarial code review |
+| `/apex-node-review` | Review flow/API consistency for this APEX↔Node stack; catches "intent drift" when a new branch diverges from the established flow (project skill, `.claude/skills/apex-node-review/`) |
 
-Planning artifacts → `_bmad-output/planning-artifacts/` | Research → `docs/`
+Planning artifacts → `_bmad-output/planning-artifacts/` | Research → `docs/` | Review reports → `docs/reviews/`
 
 ---
 
@@ -98,3 +118,4 @@ Planning artifacts → `_bmad-output/planning-artifacts/` | Research → `docs/`
 @docs/claude/05-apex-patterns.md
 @docs/claude/06-crm.md
 @docs/claude/07-pitfalls.md
+@docs/claude/08-archive.md

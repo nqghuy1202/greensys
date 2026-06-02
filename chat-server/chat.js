@@ -7,12 +7,12 @@ const router = express.Router();
 
 // ─── In-memory state ─────────────────────────────────────────────────────────
 const typingState      = new Map();   // `${conv_id}:${aus_id}` → expireHandle
-const onlineUsers      = new Map();   // aus_id(string) → Date.now()
 const participantCache = new Map();   // conv_id(number) → { ausIds: number[], expiresAt: number }
+let   onlineCache      = null;        // { ausIds: number[], expiresAt: number } | null
 
 const TYPING_TTL            =  4_000;   // 4s  — tự xóa typing nếu không có heartbeat
-const ONLINE_TTL            = 35_000;   // 35s — đánh dấu offline nếu không heartbeat
 const PARTICIPANT_CACHE_TTL = 60_000;   // 60s — cache participant list mỗi conv
+const ONLINE_CACHE_TTL      = 30_000;   // 30s — cache online list, tránh Oracle query mỗi request
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
 
@@ -239,7 +239,7 @@ router.get('/messages/:conv_id', async (req, res) => {
 // Gửi tin nhắn mới
 // Body: { conv_id, aus_id, body, reply_to_msg_id? }
 router.post('/send', async (req, res) => {
-  const { conv_id, aus_id, partner_aus_id, username, body, reply_to_msg_id } = req.body;
+  const { conv_id, aus_id, partner_aus_id, username, from_name, body, reply_to_msg_id } = req.body;
 
   if (!conv_id || !aus_id || !String(body || '').trim()) {
     return res.status(400).json({ error: 'conv_id, aus_id và body là bắt buộc' });
@@ -292,14 +292,19 @@ router.post('/send', async (req, res) => {
         { msg_id: msgId, conv_id, aus_id }
       );
 
-      // 4. Lấy tên người gửi để đính kèm vào response
-      const nameRes = await conn.execute(
-        `SELECT e.full_name
-         FROM   APP_USERS u JOIN EMPLOYEES e ON e.emp_id = u.emp_id
-         WHERE  u.aus_id = :aus_id`,
-        { aus_id },
-        { outFormat: oracledb.OUT_FORMAT_OBJECT }
-      );
+      // 4. Tên người gửi: dùng from_name từ APEX nếu có (APEX đã JOIN EMPLOYEES),
+      //    fallback query Oracle nếu không có (tương thích với client cũ).
+      let senderName = from_name || null;
+      if (!senderName) {
+        const nameRes = await conn.execute(
+          `SELECT e.full_name
+           FROM   APP_USERS u JOIN EMPLOYEES e ON e.emp_id = u.emp_id
+           WHERE  u.aus_id = :aus_id`,
+          { aus_id },
+          { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+        senderName = nameRes.rows[0]?.FULL_NAME || 'Unknown';
+      }
 
       await conn.commit();
 
@@ -307,7 +312,7 @@ router.post('/send', async (req, res) => {
         msg_id:          msgId,
         conv_id,
         from_aus_id:     aus_id,
-        from_name:       nameRes.rows[0]?.FULL_NAME || 'Unknown',
+        from_name:       senderName,
         body:            trimmedBody,
         msg_type:        'USER',
         reply_to_msg_id: reply_to_msg_id || null,
@@ -345,35 +350,59 @@ router.post('/typing/:conv_id/:aus_id', (req, res) => {
       .catch(() => {});
   }, TYPING_TTL));
 
-  // Chỉ broadcast khi lần đầu bắt đầu gõ (tránh spam)
+  // Respond ngay — không block APEX chờ name lookup
+  res.json({ status: 'ok' });
+
+  // Chỉ broadcast khi lần đầu bắt đầu gõ (tránh spam), lookup name async
   if (isNew) {
-    deliverToConv(convId, { type: 'typing', conv_id: convId, aus_id: ausId }, ausId)
-      .catch(() => {});
+    withConn(async conn => {
+      const r = await conn.execute(
+        `SELECT e.full_name
+         FROM   APP_USERS  u
+         JOIN   EMPLOYEES  e ON e.emp_id = u.emp_id
+         WHERE  u.aus_id = :aus_id`,
+        { aus_id: ausId },
+        { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+      return r.rows[0]?.FULL_NAME || 'Unknown';
+    })
+    .then(name => {
+      deliverToConv(convId, { type: 'typing', conv_id: convId, aus_id: ausId, name }, ausId)
+        .catch(() => {});
+    })
+    .catch(() => {
+      deliverToConv(convId, { type: 'typing', conv_id: convId, aus_id: ausId, name: 'Unknown' }, ausId)
+        .catch(() => {});
+    });
   }
-
-  res.json({ status: 'ok' });
-});
-
-// ─── POST /api/chat/heartbeat/:aus_id ────────────────────────────────────────
-// APEX gọi mỗi 20s để duy trì trạng thái online
-router.post('/heartbeat/:aus_id', (req, res) => {
-  onlineUsers.set(String(req.params.aus_id), Date.now());
-  res.json({ status: 'ok' });
 });
 
 // ─── GET /api/chat/online ─────────────────────────────────────────────────────
-// Trả về danh sách aus_id đang online (heartbeat trong 35s gần nhất)
-router.get('/online', (req, res) => {
-  const now    = Date.now();
-  const online = [];
-  for (const [ausId, ts] of onlineUsers) {
-    if (now - ts <= ONLINE_TTL) {
-      online.push(Number(ausId));
-    } else {
-      onlineUsers.delete(ausId);
-    }
+// Trả về danh sách aus_id đang online — query CHAT_USER_ONLINE table (Oracle).
+// APEX chatHeartbeat MERGE vào bảng này mỗi 20s; cutoff 35s = offline.
+// Cache 30s: tránh Oracle query mỗi request.
+router.get('/online', async (req, res) => {
+  if (onlineCache && onlineCache.expiresAt > Date.now()) {
+    return res.json({ online: onlineCache.ausIds, cached: true });
   }
-  res.json({ online });
+  try {
+    const rows = await withConn(async conn => {
+      const r = await conn.execute(
+        `SELECT aus_id
+         FROM   CHAT_USER_ONLINE
+         WHERE  last_seen >= SYSTIMESTAMP - INTERVAL '35' SECOND`,
+        {},
+        { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+      return r.rows;
+    });
+    const ausIds = rows.map(r => Number(r.AUS_ID));
+    onlineCache = { ausIds, expiresAt: Date.now() + ONLINE_CACHE_TTL };
+    res.json({ online: ausIds });
+  } catch (err) {
+    console.error('[Chat] GET /online:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── GET /api/chat/members/:conv_id ──────────────────────────────────────────
@@ -536,4 +565,4 @@ router.post('/create', async (req, res) => {
   }
 });
 
-module.exports = { router, onlineUsers };
+module.exports = { router };

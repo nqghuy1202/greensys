@@ -21,22 +21,19 @@
 -- ============================================================
 -- 1. dcConvListHtml
 --    Trả HTML danh sách hội thoại (convo-pane nội dung)
---    x01=doc_type | x02=doc_no | x03=filter(ALL/DM/CHANNEL) | x04=search
+--    x01=doc_type | x02=doc_no | x03=filter(ALL/UNREAD/CHANNEL) | x04=search
 -- ============================================================
 DECLARE
-  l_aus_id   NUMBER;
-  l_doc_type VARCHAR2(50)  := TRIM(apex_application.g_x01);
-  l_doc_no   VARCHAR2(100) := TRIM(apex_application.g_x02);
-  l_filter   VARCHAR2(20)  := NVL(UPPER(TRIM(apex_application.g_x03)), 'ALL');
-  l_search   VARCHAR2(200) := LOWER(TRIM(apex_application.g_x04));
-  l_count    NUMBER := 0;
-
-  FUNCTION avatar_color(p_id NUMBER) RETURN VARCHAR2 IS
-    l_colors VARCHAR2(500) :=
-      '#6366F1,#EC4899,#F59E0B,#06B6D4,#10B981,#F97316,#8B5CF6,#EF4444';
-  BEGIN
-    RETURN REGEXP_SUBSTR(l_colors, '[^,]+', 1, MOD(NVL(p_id,0), 8) + 1);
-  END;
+  l_aus_id        NUMBER;
+  l_doc_type      VARCHAR2(50)  := TRIM(apex_application.g_x01);
+  l_doc_no        VARCHAR2(100) := TRIM(apex_application.g_x02);
+  l_filter        VARCHAR2(20)  := NVL(UPPER(TRIM(apex_application.g_x03)), 'ALL');
+  l_search        VARCHAR2(200) := LOWER(TRIM(apex_application.g_x04));
+  l_online_cutoff TIMESTAMP     := SYSTIMESTAMP - INTERVAL '35' SECOND;
+  l_ch_count      NUMBER        := 0;
+  l_dm_count      NUMBER        := 0;
+  l_total_count   NUMBER        := 0;
+  l_dummy         NUMBER;
 BEGIN
   OWA_UTIL.MIME_HEADER('text/html', TRUE, 'UTF-8');
 
@@ -54,105 +51,238 @@ BEGIN
     HTP.p('<div class="dc-err">Thiếu doc_type/doc_no</div>'); RETURN;
   END IF;
 
-  -- Toolbar: search + filter tabs
+  -- Pre-count mỗi section để hiển thị số lượng trong header
+  IF l_filter IN ('ALL', 'CHANNEL', 'UNREAD') THEN
+    SELECT COUNT(*) INTO l_ch_count
+    FROM CHAT_CONVERSATIONS c
+    JOIN CHAT_PARTICIPANTS p ON p.conv_id = c.conv_id AND p.aus_id = l_aus_id
+    WHERE c.doc_type = l_doc_type AND c.doc_no = l_doc_no AND c.conv_type = 'CHANNEL'
+      AND (l_filter != 'UNREAD' OR
+           (SELECT COUNT(*) FROM CHAT_MESSENGERS m
+            WHERE m.conv_id = c.conv_id AND m.delete_date IS NULL
+            AND m.msg_id > NVL(p.last_read_msg_id, 0)) > 0)
+      AND (l_search IS NULL
+           OR LOWER(NVL(c.name,'')) LIKE '%' || l_search || '%'
+           OR LOWER(NVL(c.last_msg_preview,'')) LIKE '%' || l_search || '%');
+  END IF;
+
+  IF l_filter IN ('ALL', 'UNREAD') THEN
+    SELECT COUNT(*) INTO l_dm_count
+    FROM CHAT_CONVERSATIONS c
+    JOIN CHAT_PARTICIPANTS p ON p.conv_id = c.conv_id AND p.aus_id = l_aus_id
+    WHERE c.doc_type = l_doc_type AND c.doc_no = l_doc_no AND c.conv_type = 'DM'
+      AND (l_filter != 'UNREAD' OR
+           (SELECT COUNT(*) FROM CHAT_MESSENGERS m
+            WHERE m.conv_id = c.conv_id AND m.delete_date IS NULL
+            AND m.msg_id > NVL(p.last_read_msg_id, 0)) > 0)
+      AND (l_search IS NULL
+           OR LOWER(NVL(c.last_msg_preview,'')) LIKE '%' || l_search || '%');
+  END IF;
+
+  -- Total count (always ALL, no filter) for the badge on "Tất cả"
+  SELECT COUNT(*) INTO l_total_count
+  FROM CHAT_CONVERSATIONS c
+  JOIN CHAT_PARTICIPANTS p ON p.conv_id = c.conv_id AND p.aus_id = l_aus_id
+  WHERE c.doc_type = l_doc_type AND c.doc_no = l_doc_no;
+
+  -- Toolbar: search + lp-filter-row
   HTP.p('<div class="convo-toolbar">');
   HTP.p('  <label class="convo-search">');
   HTP.p('    <span class="fa fa-search" style="color:var(--text-4);font-size:13px"></span>');
-  HTP.p('    <input type="text" id="dc-conv-search" placeholder="Tìm kiếm..." value="'
+  HTP.p('    <input type="text" id="dc-conv-search" placeholder="Tìm hội thoại, tin nhắn..." value="'
         || HTF.ESCAPE_SC(NVL(apex_application.g_x04,'')) || '"/>');
   HTP.p('  </label>');
-  HTP.p('  <div class="convo-tabs">');
-  FOR t IN (SELECT 'ALL' f, 'Tất cả' lbl FROM DUAL
-            UNION ALL SELECT 'DM','DM' FROM DUAL
-            UNION ALL SELECT 'CHANNEL','Nhóm' FROM DUAL) LOOP
-    HTP.p('    <button type="button" class="convo-tab'
-          || CASE WHEN l_filter = t.f THEN ' active' END
-          || '" data-filter="' || t.f || '">' || t.lbl || '</button>');
-  END LOOP;
+  HTP.p('  <div class="lp-filter-row">');
+  HTP.p('    <button type="button" class="lp-filter-chip' || CASE WHEN l_filter='ALL' THEN ' active' END || '" data-filter="ALL">');
+  HTP.p('      Tất cả');
+  IF l_total_count > 0 THEN
+    HTP.p('      <span class="lp-chip-count">' || l_total_count || '</span>');
+  END IF;
+  HTP.p('      <span class="lp-chip-caret fa fa-chevron-down"></span>');
+  HTP.p('    </button>');
+  HTP.p('    <button type="button" class="lp-filter-chip' || CASE WHEN l_filter='UNREAD' THEN ' active' END || '" data-filter="UNREAD">');
+  HTP.p('      <span class="fa fa-circle" style="font-size:6px"></span> Chưa đọc');
+  HTP.p('    </button>');
+  HTP.p('    <button type="button" class="lp-filter-chip' || CASE WHEN l_filter='CHANNEL' THEN ' active' END || '" data-filter="CHANNEL">');
+  HTP.p('      <span class="fa fa-users" style="font-size:11px"></span> Nhóm');
+  HTP.p('    </button>');
   HTP.p('  </div>');
   HTP.p('</div>');
 
-  -- Conversation items
+  -- Doc context bar
+  HTP.p('<div class="dc-ctx-bar">');
+  HTP.p('  <span class="fa fa-hashtag" style="font-size:11px"></span>');
+  HTP.p('  Đang xem: <b style="color:var(--primary-700)">'
+        || HTF.ESCAPE_SC(l_doc_type || '-' || l_doc_no) || '</b>');
+  HTP.p('</div>');
+
   HTP.p('<div class="convo-list" id="dc-conv-list-inner">');
 
-  FOR conv IN (
-    SELECT c.conv_id,
-           c.conv_type,
-           c.last_msg_preview,
-           TO_CHAR(c.last_msg_date, 'HH24:MI')       AS last_time,
-           TO_CHAR(c.last_msg_date, 'DD/MM')          AS last_date,
-           CASE WHEN c.last_msg_date >= TRUNC(SYSDATE) THEN TO_CHAR(c.last_msg_date,'HH24:MI')
-                ELSE TO_CHAR(c.last_msg_date,'DD/MM') END AS display_time,
-           p.last_read_msg_id,
-           CASE c.conv_type
-             WHEN 'CHANNEL' THEN NVL(c.name,'(Không tên)')
-             ELSE (SELECT NVL(e2.full_name,'Unknown')
-                   FROM   CHAT_PARTICIPANTS p2
-                   JOIN   APP_USERS u2 ON u2.aus_id = p2.aus_id
-                   JOIN   EMPLOYEES e2 ON e2.emp_id = u2.emp_id
-                   WHERE  p2.conv_id = c.conv_id AND p2.aus_id != l_aus_id
-                   FETCH FIRST 1 ROW ONLY)
-           END AS display_name,
-           CASE c.conv_type
-             WHEN 'DM' THEN (SELECT p2.aus_id FROM CHAT_PARTICIPANTS p2
-                             WHERE  p2.conv_id = c.conv_id AND p2.aus_id != l_aus_id
-                             FETCH FIRST 1 ROW ONLY)
-           END AS partner_aus_id,
-           (SELECT COUNT(*) FROM CHAT_MESSENGERS m
-            WHERE  m.conv_id = c.conv_id AND m.delete_date IS NULL
-            AND    m.msg_id  > NVL(p.last_read_msg_id, 0)) AS unread_count
-    FROM   CHAT_CONVERSATIONS c
-    JOIN   CHAT_PARTICIPANTS  p ON p.conv_id = c.conv_id AND p.aus_id = l_aus_id
-    WHERE  c.doc_type = l_doc_type
-      AND  c.doc_no   = l_doc_no
-      AND  (l_filter = 'ALL' OR c.conv_type = l_filter)
-      AND  (l_search IS NULL
-            OR LOWER(NVL(c.name,'')) LIKE '%' || l_search || '%'
-            OR LOWER(NVL(c.last_msg_preview,'')) LIKE '%' || l_search || '%')
-    ORDER  BY c.last_msg_date DESC NULLS LAST
-  ) LOOP
-    l_count := l_count + 1;
-
-    DECLARE
-      l_name   VARCHAR2(200) := REGEXP_REPLACE(NVL(conv.display_name,'?'),'[[:cntrl:]]','');
-      l_initl  VARCHAR2(4)   := UPPER(SUBSTR(REGEXP_SUBSTR(l_name,'\S+$'),1,1));
-      l_color  VARCHAR2(30)  := avatar_color(NVL(conv.partner_aus_id, conv.conv_id));
-      l_unread BOOLEAN       := conv.unread_count > 0;
-      l_cls    VARCHAR2(100) := 'convo-item' || CASE WHEN l_unread THEN ' unread' END;
-    BEGIN
-      HTP.p('<div class="' || l_cls || '" data-conv-id="' || conv.conv_id
-            || '" data-partner-aus-id="' || NVL(conv.partner_aus_id,'') || '">');
-      HTP.p('  <div class="convo-avatar-wrap">');
-      IF conv.conv_type = 'CHANNEL' THEN
-        HTP.p('    <div class="convo-avatar group"><span class="fa fa-users"></span></div>');
-      ELSE
-        HTP.p('    <div class="convo-avatar" style="background:' || l_color || '">'
-              || l_initl || '</div>');
-      END IF;
-      HTP.p('  </div>');
-      HTP.p('  <div class="convo-content">');
-      HTP.p('    <div class="convo-row1">');
-      HTP.p('      <span class="convo-name">' || HTF.ESCAPE_SC(l_name) || '</span>');
-      HTP.p('      <span class="convo-time">' || NVL(conv.display_time,'') || '</span>');
-      HTP.p('    </div>');
-      HTP.p('    <div class="convo-row2">');
-      HTP.p('      <span class="convo-preview">'
-            || HTF.ESCAPE_SC(SUBSTR(NVL(conv.last_msg_preview,''),1,60)) || '</span>');
-      IF l_unread THEN
-        HTP.p('      <div class="convo-meta"><span class="convo-badge">'
-              || conv.unread_count || '</span></div>');
-      END IF;
-      HTP.p('    </div>');
-      HTP.p('  </div>');
-      HTP.p('</div>');
-    END;
-  END LOOP;
-
-  IF l_count = 0 THEN
+  IF l_ch_count + l_dm_count = 0 THEN
     HTP.p('<div style="text-align:center;color:var(--text-3);padding:32px 16px;font-size:13px">');
-    HTP.p('  Chưa có hội thoại nào.<br>Nhấn "+ Tạo hội thoại" để bắt đầu.');
+    IF l_filter = 'UNREAD' THEN
+      HTP.p('  Không có tin nhắn chưa đọc.');
+    ELSE
+      HTP.p('  Chưa có hội thoại nào.<br>Nhấn "Nhắn tin" hoặc "Tạo nhóm" để bắt đầu.');
+    END IF;
     HTP.p('</div>');
-  END IF;
+  ELSE
+
+    -- ── CHANNEL SECTION ──────────────────────────────────────────
+    IF l_ch_count > 0 THEN
+      HTP.p('<div class="convo-section-label">NHÓM TRAO ĐỔI &middot; ' || l_ch_count || '</div>');
+      FOR conv IN (
+        SELECT c.conv_id,
+               NVL(c.name,'(Không tên)') AS display_name,
+               c.last_msg_preview,
+               CASE WHEN c.last_msg_date >= TRUNC(SYSDATE) THEN TO_CHAR(c.last_msg_date,'HH24:MI')
+                    ELSE TO_CHAR(c.last_msg_date,'DD/MM') END AS display_time,
+               p.last_read_msg_id,
+               -- aus_id người gửi tin cuối (local table)
+               (SELECT m.from_aus_id FROM CHAT_MESSENGERS m
+                WHERE m.conv_id = c.conv_id AND m.delete_date IS NULL
+                ORDER BY m.msg_id DESC FETCH FIRST 1 ROW ONLY) AS last_sender_aus_id,
+               -- tên ngắn người gửi cuối (để hiển thị mini-badge + preview prefix)
+               (SELECT REGEXP_SUBSTR(REGEXP_REPLACE(NVL(e3.full_name,'?'),'[[:cntrl:]]',''),'\S+$')
+                FROM CHAT_MESSENGERS m3
+                JOIN APP_USERS u3 ON u3.aus_id = m3.from_aus_id
+                JOIN EMPLOYEES e3 ON e3.emp_id = u3.emp_id
+                WHERE m3.conv_id = c.conv_id AND m3.delete_date IS NULL
+                ORDER BY m3.msg_id DESC FETCH FIRST 1 ROW ONLY) AS last_sender_word,
+               (SELECT COUNT(*) FROM CHAT_MESSENGERS m
+                WHERE m.conv_id = c.conv_id AND m.delete_date IS NULL
+                AND m.msg_id > NVL(p.last_read_msg_id, 0)) AS unread_count
+        FROM CHAT_CONVERSATIONS c
+        JOIN CHAT_PARTICIPANTS p ON p.conv_id = c.conv_id AND p.aus_id = l_aus_id
+        WHERE c.doc_type = l_doc_type AND c.doc_no = l_doc_no AND c.conv_type = 'CHANNEL'
+          AND (l_filter != 'UNREAD' OR
+               (SELECT COUNT(*) FROM CHAT_MESSENGERS m
+                WHERE m.conv_id = c.conv_id AND m.delete_date IS NULL
+                AND m.msg_id > NVL(p.last_read_msg_id, 0)) > 0)
+          AND (l_search IS NULL
+               OR LOWER(NVL(c.name,'')) LIKE '%' || l_search || '%'
+               OR LOWER(NVL(c.last_msg_preview,'')) LIKE '%' || l_search || '%')
+        ORDER BY c.last_msg_date DESC NULLS LAST
+      ) LOOP
+        DECLARE
+          l_name        VARCHAR2(200) := REGEXP_REPLACE(NVL(conv.display_name,'?'),'[[:cntrl:]]','');
+          l_unread      BOOLEAN       := conv.unread_count > 0;
+          l_cls         VARCHAR2(100) := 'convo-item' || CASE WHEN l_unread THEN ' unread' END;
+          l_badge_hue   VARCHAR2(10)  := TO_CHAR(MOD(NVL(conv.last_sender_aus_id,0)*47,360));
+          l_badge_initl VARCHAR2(4)   := UPPER(SUBSTR(NVL(conv.last_sender_word,'?'),1,1));
+          l_is_mine     BOOLEAN       := (conv.last_sender_aus_id = l_aus_id);
+          l_sender_lbl  VARCHAR2(200);
+        BEGIN
+          IF l_is_mine THEN l_sender_lbl := 'Bạn';
+          ELSIF conv.last_sender_word IS NOT NULL THEN l_sender_lbl := conv.last_sender_word;
+          END IF;
+          HTP.p('<div class="' || l_cls || '" data-conv-id="' || conv.conv_id || '" data-partner-aus-id="">');
+          HTP.p('  <div class="convo-avatar-wrap">');
+          HTP.p('    <div class="convo-avatar group"><span class="fa fa-users"></span></div>');
+          -- Mini-badge: avatar người gửi tin cuối (bottom-right của group icon)
+          IF conv.last_sender_aus_id IS NOT NULL THEN
+            HTP.p('    <div class="convo-sender-badge" style="background:hsl('
+                  || l_badge_hue || ',55%,52%)">' || l_badge_initl || '</div>');
+          END IF;
+          HTP.p('  </div>');
+          HTP.p('  <div class="convo-content">');
+          HTP.p('    <div class="convo-row1">');
+          HTP.p('      <span class="convo-name">' || HTF.ESCAPE_SC(l_name) || '</span>');
+          HTP.p('      <span class="convo-time">' || NVL(conv.display_time,'') || '</span>');
+          HTP.p('    </div>');
+          HTP.p('    <div class="convo-row2">');
+          HTP.p('      <span class="convo-preview">'
+                || CASE WHEN l_sender_lbl IS NOT NULL
+                   THEN '<span class="convo-sender-name">' || HTF.ESCAPE_SC(l_sender_lbl) || ':</span> '
+                   END
+                || HTF.ESCAPE_SC(SUBSTR(NVL(conv.last_msg_preview,''),1,55)) || '</span>');
+          IF l_unread THEN
+            HTP.p('      <div class="convo-meta"><span class="convo-badge">' || conv.unread_count || '</span></div>');
+          END IF;
+          HTP.p('    </div>');
+          HTP.p('  </div>');
+          HTP.p('</div>');
+        END;
+      END LOOP;
+    END IF; -- CHANNEL section
+
+    -- ── DM SECTION ───────────────────────────────────────────────
+    IF l_dm_count > 0 THEN
+      HTP.p('<div class="convo-section-label"' || CASE WHEN l_ch_count > 0 THEN ' style="margin-top:4px"' END
+            || '>TRAO ĐỔI CÁ NHÂN &middot; ' || l_dm_count || '</div>');
+      FOR conv IN (
+        SELECT c.conv_id,
+               (SELECT NVL(e2.full_name,'Unknown')
+                FROM CHAT_PARTICIPANTS p2
+                JOIN APP_USERS u2 ON u2.aus_id = p2.aus_id
+                JOIN EMPLOYEES e2 ON e2.emp_id = u2.emp_id
+                WHERE p2.conv_id = c.conv_id AND p2.aus_id != l_aus_id
+                FETCH FIRST 1 ROW ONLY) AS display_name,
+               c.last_msg_preview,
+               CASE WHEN c.last_msg_date >= TRUNC(SYSDATE) THEN TO_CHAR(c.last_msg_date,'HH24:MI')
+                    ELSE TO_CHAR(c.last_msg_date,'DD/MM') END AS display_time,
+               p.last_read_msg_id,
+               (SELECT p2.aus_id FROM CHAT_PARTICIPANTS p2
+                WHERE p2.conv_id = c.conv_id AND p2.aus_id != l_aus_id
+                FETCH FIRST 1 ROW ONLY) AS partner_aus_id,
+               (SELECT COUNT(*) FROM CHAT_MESSENGERS m
+                WHERE m.conv_id = c.conv_id AND m.delete_date IS NULL
+                AND m.msg_id > NVL(p.last_read_msg_id, 0)) AS unread_count
+        FROM CHAT_CONVERSATIONS c
+        JOIN CHAT_PARTICIPANTS p ON p.conv_id = c.conv_id AND p.aus_id = l_aus_id
+        WHERE c.doc_type = l_doc_type AND c.doc_no = l_doc_no AND c.conv_type = 'DM'
+          AND (l_filter != 'UNREAD' OR
+               (SELECT COUNT(*) FROM CHAT_MESSENGERS m
+                WHERE m.conv_id = c.conv_id AND m.delete_date IS NULL
+                AND m.msg_id > NVL(p.last_read_msg_id, 0)) > 0)
+          AND (l_search IS NULL
+               OR LOWER(NVL(c.last_msg_preview,'')) LIKE '%' || l_search || '%')
+        ORDER BY c.last_msg_date DESC NULLS LAST
+      ) LOOP
+        DECLARE
+          l_name     VARCHAR2(200) := REGEXP_REPLACE(NVL(conv.display_name,'?'),'[[:cntrl:]]','');
+          l_initl    VARCHAR2(4)   := UPPER(SUBSTR(REGEXP_SUBSTR(l_name,'\S+$'),1,1));
+          l_hue      VARCHAR2(10)  := TO_CHAR(MOD(NVL(conv.partner_aus_id,0)*47,360));
+          l_unread   BOOLEAN       := conv.unread_count > 0;
+          l_cls      VARCHAR2(100) := 'convo-item' || CASE WHEN l_unread THEN ' unread' END;
+          l_online   BOOLEAN       := FALSE;
+          l_presence VARCHAR2(10);
+        BEGIN
+          -- Presence check: CHAT_USER_ONLINE là local table, không qua DB link
+          IF conv.partner_aus_id IS NOT NULL THEN
+            BEGIN
+              SELECT 1 INTO l_dummy FROM CHAT_USER_ONLINE
+              WHERE aus_id = conv.partner_aus_id AND last_seen >= l_online_cutoff;
+              l_online := TRUE;
+            EXCEPTION WHEN NO_DATA_FOUND THEN NULL;
+            END;
+          END IF;
+          l_presence := CASE WHEN l_online THEN 'online' ELSE 'offline' END;
+          HTP.p('<div class="' || l_cls || '" data-conv-id="' || conv.conv_id
+                || '" data-partner-aus-id="' || NVL(conv.partner_aus_id,'') || '">');
+          HTP.p('  <div class="convo-avatar-wrap">');
+          HTP.p('    <div class="convo-avatar" style="background:hsl(' || l_hue || ',55%,52%)">'
+                || NVL(l_initl,'?') || '<span class="presence ' || l_presence || '"></span></div>');
+          HTP.p('  </div>');
+          HTP.p('  <div class="convo-content">');
+          HTP.p('    <div class="convo-row1">');
+          HTP.p('      <span class="convo-name">' || HTF.ESCAPE_SC(l_name) || '</span>');
+          HTP.p('      <span class="convo-time">' || NVL(conv.display_time,'') || '</span>');
+          HTP.p('    </div>');
+          HTP.p('    <div class="convo-row2">');
+          HTP.p('      <span class="convo-preview">'
+                || HTF.ESCAPE_SC(SUBSTR(NVL(conv.last_msg_preview,''),1,60)) || '</span>');
+          IF l_unread THEN
+            HTP.p('      <div class="convo-meta"><span class="convo-badge">' || conv.unread_count || '</span></div>');
+          END IF;
+          HTP.p('    </div>');
+          HTP.p('  </div>');
+          HTP.p('</div>');
+        END;
+      END LOOP;
+    END IF; -- DM section
+
+  END IF; -- total > 0
 
   HTP.p('</div>'); -- .convo-list
 EXCEPTION
@@ -168,7 +298,7 @@ END;
 --    Dùng MATERIALIZE vì REGEXP_REPLACE trên remote column.
 -- ============================================================
 DECLARE
-  l_conv_id  NUMBER    := TO_NUMBER(NVL(TRIM(apex_application.g_x01),'0'));
+  l_conv_id  NUMBER       := TO_NUMBER(NVL(TRIM(apex_application.g_x01),'0'));
   l_search   VARCHAR2(200) := LOWER(TRIM(apex_application.g_x02));
   l_aus_id   NUMBER;
   l_last_day DATE := NULL;
@@ -206,7 +336,7 @@ BEGIN
         CASE WHEN m.delete_date IS NOT NULL THEN NULL ELSE m.body END AS body,
         m.delete_date,
         m.reply_to_msg_id,
-        TRUNC(m.create_date)                AS msg_day,
+        TRUNC(m.create_date)               AS msg_day,
         TO_CHAR(m.create_date, 'HH24:MI')  AS msg_time,
         CASE WHEN qm.delete_date IS NOT NULL THEN '[Tin nhắn đã bị xóa]' ELSE qm.body END AS reply_body,
         REGEXP_REPLACE(NVL(qe.full_name,''), '[[:cntrl:]]', '') AS reply_from_name
@@ -230,9 +360,9 @@ BEGIN
     END IF;
 
     DECLARE
-      l_mine  BOOLEAN := (msg.from_aus_id = l_aus_id);
-      l_cls   VARCHAR2(50) := 'msg-row' || CASE WHEN l_mine THEN ' mine' END;
-      l_av    VARCHAR2(4);
+      l_mine     BOOLEAN      := (msg.from_aus_id = l_aus_id);
+      l_cls      VARCHAR2(50) := 'msg-row' || CASE WHEN l_mine THEN ' mine' END;
+      l_av       VARCHAR2(4);
       l_body_esc VARCHAR2(32767);
     BEGIN
       -- Avatar initial (last word of full_name)
@@ -241,7 +371,7 @@ BEGIN
 
       HTP.p('<div class="' || l_cls || '" data-msg-id="' || msg.msg_id || '">');
 
-      -- Avatar (hide for mine messages)
+      -- Avatar (ẩn với tin nhắn của mình)
       IF l_mine THEN
         HTP.p('  <div class="msg-avatar hidden"></div>');
       ELSE
@@ -299,11 +429,9 @@ BEGIN
   -- Empty state
   IF l_last_day IS NULL THEN
     IF l_search IS NOT NULL THEN
-      HTP.p('<div style="text-align:center;color:var(--text-3);margin-top:60px;font-size:13px">');
-      HTP.p('  Không tìm thấy tin nhắn nào.</div>');
+      HTP.p('<div style="text-align:center;color:var(--text-3);margin-top:60px;font-size:13px">Không tìm thấy tin nhắn nào.</div>');
     ELSE
-      HTP.p('<div style="text-align:center;color:var(--text-3);margin-top:60px;font-size:13px">');
-      HTP.p('  Chưa có tin nhắn. Hãy bắt đầu cuộc trò chuyện!</div>');
+      HTP.p('<div style="text-align:center;color:var(--text-3);margin-top:60px;font-size:13px">Chưa có tin nhắn. Hãy bắt đầu cuộc trò chuyện!</div>');
     END IF;
   END IF;
 EXCEPTION
@@ -331,52 +459,27 @@ BEGIN
   -- ── SECTION 1: Doc summary card ──────────────────────────────
   -- Shell được JS điền vào qua injectDocFields() sau khi render xong
   HTP.p('<div class="info-section">');
-  HTP.p('  <div class="info-section-title">');
-  HTP.p('    <span class="fa fa-file-text-o"></span> Chứng từ');
-  HTP.p('  </div>');
+  HTP.p('  <div class="info-section-title"><span class="fa fa-file-text-o"></span> Chứng từ</div>');
   HTP.p('  <div class="doc-summary-card">');
-  HTP.p('    <div class="doc-summary-no">');
-  HTP.p('      <span class="label" id="dc-doc-no">—</span>');
-  HTP.p('      <span class="status" id="dc-doc-status"></span>');
-  HTP.p('    </div>');
+  HTP.p('    <div class="doc-summary-no"><span class="label" id="dc-doc-no">—</span><span class="status" id="dc-doc-status"></span></div>');
   HTP.p('    <div class="doc-summary-type" id="dc-doc-label"></div>');
-  HTP.p('    <div class="doc-summary-rows" id="dc-doc-fields-placeholder">');
-  HTP.p('      <div class="dc-loading" style="padding:8px 0">Đang tải...</div>');
-  HTP.p('    </div>');
+  HTP.p('    <div class="doc-summary-rows" id="dc-doc-fields-placeholder"><div class="dc-loading" style="padding:8px 0">Đang tải...</div></div>');
   HTP.p('    <hr class="doc-summary-divider">');
-  HTP.p('    <div class="doc-summary-row">');
-  HTP.p('      <span class="k">Giá trị</span>');
-  HTP.p('      <span class="v money" id="dc-doc-total">—</span>');
-  HTP.p('    </div>');
+  HTP.p('    <div class="doc-summary-row"><span class="k">Giá trị</span><span class="v money" id="dc-doc-total">—</span></div>');
   HTP.p('  </div>');
   HTP.p('</div>');
 
   -- ── SECTION 2: Quick actions ──────────────────────────────────
   HTP.p('<div class="info-section">');
-  HTP.p('  <div class="info-section-title">');
-  HTP.p('    <span class="fa fa-bolt"></span> Thao tác nhanh');
-  HTP.p('  </div>');
-  HTP.p('  <div class="quick-action" id="dc-qa-open">');
-  HTP.p('    <div class="quick-action-icon"><span class="fa fa-external-link"></span></div>');
-  HTP.p('    Mở chứng từ');
-  HTP.p('  </div>');
-  HTP.p('  <div class="quick-action" id="dc-qa-approve">');
-  HTP.p('    <div class="quick-action-icon"><span class="fa fa-check-circle-o"></span></div>');
-  HTP.p('    Duyệt chứng từ');
-  HTP.p('  </div>');
-  HTP.p('  <div class="quick-action" id="dc-qa-print">');
-  HTP.p('    <div class="quick-action-icon"><span class="fa fa-print"></span></div>');
-  HTP.p('    In chứng từ');
-  HTP.p('  </div>');
-  HTP.p('  <div class="quick-action" id="dc-qa-pdf">');
-  HTP.p('    <div class="quick-action-icon"><span class="fa fa-download"></span></div>');
-  HTP.p('    Tải PDF');
-  HTP.p('  </div>');
+  HTP.p('  <div class="info-section-title"><span class="fa fa-bolt"></span> Thao tác nhanh</div>');
+  HTP.p('  <div class="quick-action" id="dc-qa-open"><div class="quick-action-icon"><span class="fa fa-external-link"></span></div>Mở chứng từ</div>');
+  HTP.p('  <div class="quick-action" id="dc-qa-approve"><div class="quick-action-icon"><span class="fa fa-check-circle-o"></span></div>Duyệt chứng từ</div>');
+  HTP.p('  <div class="quick-action" id="dc-qa-print"><div class="quick-action-icon"><span class="fa fa-print"></span></div>In chứng từ</div>');
+  HTP.p('  <div class="quick-action" id="dc-qa-pdf"><div class="quick-action-icon"><span class="fa fa-download"></span></div>Tải PDF</div>');
   HTP.p('</div>');
 
   IF l_conv_id = 0 THEN
-    HTP.p('<div class="info-section" style="color:var(--text-3);font-size:13px">');
-    HTP.p('  Chọn hội thoại để xem thành viên</div>');
+    HTP.p('<div class="info-section" style="color:var(--text-3);font-size:13px">Chọn hội thoại để xem thành viên</div>');
     RETURN;
   END IF;
 
@@ -396,7 +499,6 @@ BEGIN
     HTP.p('    <span class="fa fa-users"></span> Thành viên');
     HTP.p('    <span class="count" id="dc-member-count">…</span>');
     HTP.p('  </div>');
-
     FOR mem IN (
       WITH members_raw AS (
         SELECT /*+ MATERIALIZE */
@@ -418,9 +520,9 @@ BEGIN
     ) LOOP
       l_count := l_count + 1;
       DECLARE
-        l_av  VARCHAR2(4) := UPPER(SUBSTR(REGEXP_SUBSTR(mem.full_name,'\S+$'),1,1));
+        l_av  VARCHAR2(4)  := UPPER(SUBSTR(REGEXP_SUBSTR(mem.full_name,'\S+$'),1,1));
         l_hue VARCHAR2(10) := TO_CHAR(MOD(mem.aus_id * 47, 360));
-        l_me  BOOLEAN := (mem.aus_id = l_aus_id);
+        l_me  BOOLEAN      := (mem.aus_id = l_aus_id);
       BEGIN
         HTP.p('<div class="member-row">');
         HTP.p('  <div class="member-avatar" style="background:hsl(' || l_hue || ',55%,52%)">');
@@ -444,21 +546,14 @@ BEGIN
     END LOOP;
 
     -- Update count badge via inline script
-    HTP.p('<script>');
-    HTP.p('(function(){ var el=document.getElementById("dc-member-count");');
-    HTP.p('  if(el) el.textContent=' || l_count || '; })();');
-    HTP.p('</script>');
+    HTP.p('<script>(function(){ var el=document.getElementById("dc-member-count"); if(el) el.textContent=' || l_count || '; })();</script>');
     HTP.p('</div>'); -- .info-section members
 
     -- ── SECTION 4: Files placeholder ─────────────────────────────
     HTP.p('<div class="info-section">');
-    HTP.p('  <div class="info-section-title">');
-    HTP.p('    <span class="fa fa-paperclip"></span> File đã chia sẻ');
-    HTP.p('    <span class="count">0</span>');
-    HTP.p('  </div>');
+    HTP.p('  <div class="info-section-title"><span class="fa fa-paperclip"></span> File đã chia sẻ<span class="count">0</span></div>');
     HTP.p('  <div style="text-align:center;padding:16px 0;color:var(--text-4);font-size:12.5px">');
-    HTP.p('    <span class="fa fa-inbox" style="font-size:22px;display:block;margin-bottom:6px"></span>');
-    HTP.p('    Chưa có file nào');
+    HTP.p('    <span class="fa fa-inbox" style="font-size:22px;display:block;margin-bottom:6px"></span>Chưa có file nào');
     HTP.p('  </div>');
     HTP.p('</div>');
   END;
@@ -500,14 +595,8 @@ BEGIN
   HTP.p('<div class="form-field">');
   HTP.p('  <span class="form-label">Loại hội thoại</span>');
   HTP.p('  <div class="dc-type-tabs" style="margin-top:4px">');
-  HTP.p('    <label class="dc-type-tab active">');
-  HTP.p('      <input type="radio" name="dc-conv-type" value="DM" checked>');
-  HTP.p('      <span class="fa fa-user"></span> Nhắn tin riêng');
-  HTP.p('    </label>');
-  HTP.p('    <label class="dc-type-tab">');
-  HTP.p('      <input type="radio" name="dc-conv-type" value="CHANNEL">');
-  HTP.p('      <span class="fa fa-users"></span> Tạo nhóm');
-  HTP.p('    </label>');
+  HTP.p('    <label class="dc-type-tab active"><input type="radio" name="dc-conv-type" value="DM" checked><span class="fa fa-user"></span> Nhắn tin riêng</label>');
+  HTP.p('    <label class="dc-type-tab"><input type="radio" name="dc-conv-type" value="CHANNEL"><span class="fa fa-users"></span> Tạo nhóm</label>');
   HTP.p('  </div>');
   HTP.p('</div>');
 
@@ -533,7 +622,6 @@ BEGIN
 
   -- 6. Member list — nhóm theo phòng ban
   HTP.p('<div class="member-suggest" id="dc-member-suggest-list">');
-
   DECLARE
     l_prev_dep VARCHAR2(200) := '~~init~~';
   BEGIN
@@ -555,11 +643,9 @@ BEGIN
       ORDER  BY r.dep_name, r.full_name
     ) LOOP
       IF usr.dep_name <> l_prev_dep THEN
-        HTP.p('<div class="dc-dept-h" data-dept-header="1">'
-              || HTF.ESCAPE_SC(usr.dep_name) || '</div>');
+        HTP.p('<div class="dc-dept-h" data-dept-header="1">' || HTF.ESCAPE_SC(usr.dep_name) || '</div>');
         l_prev_dep := usr.dep_name;
       END IF;
-
       DECLARE
         l_av   VARCHAR2(4)   := UPPER(SUBSTR(REGEXP_SUBSTR(usr.full_name,'\S+$'),1,1));
         l_hue  VARCHAR2(10)  := TO_CHAR(MOD(usr.aus_id * 47, 360));
@@ -571,8 +657,7 @@ BEGIN
         HTP.p('     data-name="'   || REPLACE(l_name,'"','&quot;') || '"');
         HTP.p('     data-dept="'   || REPLACE(l_dept,'"','&quot;') || '"');
         HTP.p('     data-hue="'    || l_hue || '">');
-        HTP.p('  <div class="member-avatar" style="width:32px;height:32px;font-size:12px;background:hsl('
-              || l_hue || ',55%,52%)">');
+        HTP.p('  <div class="member-avatar" style="width:32px;height:32px;font-size:12px;background:hsl(' || l_hue || ',55%,52%)">');
         HTP.p('    ' || NVL(l_av,'?'));
         HTP.p('    <span class="presence ' || usr.presence || '"></span>');
         HTP.p('  </div>');
@@ -585,7 +670,6 @@ BEGIN
       END;
     END LOOP;
   END;
-
   HTP.p('</div>'); -- #dc-member-suggest-list
 EXCEPTION
   WHEN OTHERS THEN

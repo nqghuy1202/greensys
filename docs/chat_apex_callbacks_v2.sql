@@ -1,8 +1,8 @@
 -- ===========================================================
 -- CHAT HỆ THỐNG — APEX Ajax Callbacks (v2)
--- Dùng :APP_USER thay :G_AUS_ID (an toàn hơn, luôn có trong Application Process)
--- Tạo dưới dạng Application Process (Shared Components) — không cần pageId
--- ===========================================================
+-- Tạo dưới dạng Ajax Callback trực tiếp trên Messenger page — KHÔNG dùng Application Process
+-- JS gọi với pageId: apex.server.process(name, data, { pageId: window.pageId, ... })
+-- window.pageId được set trong "Function and Global Variable Declaration": var pageId = $v('pFlowStepId')
 --
 -- PATTERN CHUNG (đầu mỗi callback):
 --   IF :APP_USER IS NULL OR :APP_USER IN ('nobody','NOBODY') THEN
@@ -23,7 +23,7 @@
 -- -----------------------------------------------------------
 DECLARE
   l_aus_id  NUMBER;
-  l_result  VARCHAR2(32767);
+  l_result  CLOB;
 BEGIN
   OWA_UTIL.MIME_HEADER('application/json', TRUE, 'UTF-8');
 
@@ -96,12 +96,23 @@ BEGIN
       )
       FROM CHAT_CONVERSATIONS c
       JOIN CHAT_PARTICIPANTS  p ON p.conv_id = c.conv_id AND p.aus_id = l_aus_id
+      WHERE c.doc_type IS NULL
     ),
     JSON_ARRAY()
   )
   INTO l_result FROM DUAL;
 
-  HTP.p('{"conversations":' || l_result || '}');
+  DECLARE
+    l_off PLS_INTEGER := 1;
+    l_len PLS_INTEGER := NVL(DBMS_LOB.GETLENGTH(l_result), 0);
+  BEGIN
+    HTP.p('{"conversations":');
+    WHILE l_off <= l_len LOOP
+      HTP.p(DBMS_LOB.SUBSTR(l_result, 32000, l_off));
+      l_off := l_off + 32000;
+    END LOOP;
+    HTP.p('}');
+  END;
 EXCEPTION
   WHEN OTHERS THEN
     HTP.p('{"error":"' || REPLACE(SQLERRM,'"','\"') || '"}');
@@ -117,7 +128,7 @@ DECLARE
   l_conv_id   NUMBER;
   l_before_id NUMBER;
   l_limit     NUMBER;
-  l_result    VARCHAR2(32767);
+  l_result    CLOB;
   l_has_more  NUMBER := 0;
   l_count     NUMBER;
 BEGIN
@@ -202,7 +213,17 @@ BEGIN
   )
   INTO l_result FROM DUAL;
 
-  HTP.p('{"messages":' || l_result || ',"has_more":' || l_has_more || '}');
+  DECLARE
+    l_off PLS_INTEGER := 1;
+    l_len PLS_INTEGER := NVL(DBMS_LOB.GETLENGTH(l_result), 0);
+  BEGIN
+    HTP.p('{"messages":');
+    WHILE l_off <= l_len LOOP
+      HTP.p(DBMS_LOB.SUBSTR(l_result, 32000, l_off));
+      l_off := l_off + 32000;
+    END LOOP;
+    HTP.p(',"has_more":' || l_has_more || '}');
+  END;
 EXCEPTION
   WHEN OTHERS THEN
     HTP.p('{"error":"' || REPLACE(SQLERRM,'"','\"') || '"}');
@@ -217,7 +238,7 @@ DECLARE
   l_aus_id        NUMBER;
   l_conv_id       NUMBER;
   l_count         NUMBER;
-  l_result        VARCHAR2(32767);
+  l_result        CLOB;
   l_online_cutoff TIMESTAMP := SYSTIMESTAMP - INTERVAL '35' SECOND;
 BEGIN
   OWA_UTIL.MIME_HEADER('application/json', TRUE, 'UTF-8');
@@ -269,7 +290,17 @@ BEGIN
   FROM   members_remote r
   LEFT JOIN CHAT_USER_ONLINE o ON o.aus_id = r.aus_id;
 
-  HTP.p('{"members":' || l_result || '}');
+  DECLARE
+    l_off PLS_INTEGER := 1;
+    l_len PLS_INTEGER := NVL(DBMS_LOB.GETLENGTH(l_result), 0);
+  BEGIN
+    HTP.p('{"members":');
+    WHILE l_off <= l_len LOOP
+      HTP.p(DBMS_LOB.SUBSTR(l_result, 32000, l_off));
+      l_off := l_off + 32000;
+    END LOOP;
+    HTP.p('}');
+  END;
 EXCEPTION
   WHEN OTHERS THEN
     HTP.p('{"error":"' || REPLACE(SQLERRM,'"','\"') || '"}');
@@ -387,6 +418,7 @@ BEGIN
   l_payload := JSON_OBJECT(
     'conv_id'         VALUE TO_NUMBER(apex_application.g_x01),
     'aus_id'          VALUE l_aus_id,
+    'username'        VALUE :APP_USER,
     'body'            VALUE apex_application.g_x02,
     'reply_to_msg_id' VALUE NULLIF(TRIM(apex_application.g_x03), ''),
     'partner_aus_id'  VALUE NULLIF(TRIM(apex_application.g_x04), '')
@@ -396,9 +428,10 @@ BEGIN
   UTL_HTTP.SET_TRANSFER_TIMEOUT(10);
   l_url := 'http://172.25.10.38:3410/api/chat/send';
   l_req := UTL_HTTP.BEGIN_REQUEST(l_url, 'POST', 'HTTP/1.1');
-  UTL_HTTP.SET_HEADER(l_req, 'Content-Type', 'application/json');
-  UTL_HTTP.SET_HEADER(l_req, 'Content-Length', LENGTHB(l_payload));
-  UTL_HTTP.WRITE_TEXT(l_req, l_payload);
+  UTL_HTTP.SET_HEADER(l_req, 'Content-Type',   'application/json; charset=utf-8');
+  UTL_HTTP.SET_HEADER(l_req, 'Connection',     'close');
+  UTL_HTTP.SET_HEADER(l_req, 'Content-Length',  TO_CHAR(UTL_RAW.LENGTH(UTL_RAW.CAST_TO_RAW(l_payload))));
+  UTL_HTTP.WRITE_RAW(l_req, UTL_RAW.CAST_TO_RAW(l_payload));
   l_resp := UTL_HTTP.GET_RESPONSE(l_req);
   BEGIN
     LOOP UTL_HTTP.READ_TEXT(l_resp, l_buffer, 32767); l_body := l_body || l_buffer; END LOOP;
@@ -451,9 +484,10 @@ BEGIN
   UTL_HTTP.SET_TRANSFER_TIMEOUT(10);
   l_url := 'http://172.25.10.38:3410/api/chat/create';
   l_req := UTL_HTTP.BEGIN_REQUEST(l_url, 'POST', 'HTTP/1.1');
-  UTL_HTTP.SET_HEADER(l_req, 'Content-Type', 'application/json');
-  UTL_HTTP.SET_HEADER(l_req, 'Content-Length', LENGTHB(l_payload));
-  UTL_HTTP.WRITE_TEXT(l_req, l_payload);
+  UTL_HTTP.SET_HEADER(l_req, 'Content-Type',   'application/json; charset=utf-8');
+  UTL_HTTP.SET_HEADER(l_req, 'Connection',     'close');
+  UTL_HTTP.SET_HEADER(l_req, 'Content-Length',  TO_CHAR(UTL_RAW.LENGTH(UTL_RAW.CAST_TO_RAW(l_payload))));
+  UTL_HTTP.WRITE_RAW(l_req, UTL_RAW.CAST_TO_RAW(l_payload));
   l_resp := UTL_HTTP.GET_RESPONSE(l_req);
   BEGIN
     LOOP UTL_HTTP.READ_TEXT(l_resp, l_buffer, 32767); l_body := l_body || l_buffer; END LOOP;
@@ -500,6 +534,7 @@ BEGIN
            || apex_application.g_x01 || '/' || TO_CHAR(l_aus_id);
   UTL_HTTP.SET_TRANSFER_TIMEOUT(5);
   l_req  := UTL_HTTP.BEGIN_REQUEST(l_url, 'POST', 'HTTP/1.1');
+  UTL_HTTP.SET_HEADER(l_req, 'Connection',     'close');
   UTL_HTTP.SET_HEADER(l_req, 'Content-Length', '0');
   l_resp := UTL_HTTP.GET_RESPONSE(l_req);
   BEGIN LOOP UTL_HTTP.READ_TEXT(l_resp, l_tmp, 4000); l_buf := l_buf || l_tmp; END LOOP;
@@ -545,6 +580,7 @@ BEGIN
            || apex_application.g_x01 || '/' || TO_CHAR(l_aus_id);
   UTL_HTTP.SET_TRANSFER_TIMEOUT(5);
   l_req  := UTL_HTTP.BEGIN_REQUEST(l_url, 'POST', 'HTTP/1.1');
+  UTL_HTTP.SET_HEADER(l_req, 'Connection',     'close');
   UTL_HTTP.SET_HEADER(l_req, 'Content-Length', '0');
   l_resp := UTL_HTTP.GET_RESPONSE(l_req);
   BEGIN LOOP UTL_HTTP.READ_TEXT(l_resp, l_tmp, 4000); l_buf := l_buf || l_tmp; END LOOP;

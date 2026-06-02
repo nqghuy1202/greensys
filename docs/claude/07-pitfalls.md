@@ -81,17 +81,25 @@ END;
 
 **Exception:** page-level callbacks on Page 0 (`notificationWait`, `chatHeartbeat`) — `:G_AUS_ID` is reliable there.
 
-### pageId in apex.server.process
+### pageId in apex.server.process — Rule kiến trúc
 
-`apex.server.process('name', data, { pageId: N })` does NOT route to page-level callbacks **từ một page khác** trong APEX 24.2 → `parsererror` ("Process not found").
+**Rule bất biến:** Feature của page nào thì Ajax Callback phải nằm trên page đó, JS gọi với `pageId`.
 
-**Rule:**
-- Gọi callback của page X từ page Y (khác page) → **dùng Application Process, không có `pageId`**
-- Gọi callback của page X từ chính page X → **dùng `pageId: X`** — hoạt động đúng
+```javascript
+// Đúng — callback nằm trên chính page đang chạy:
+apex.server.process('chatSend', data, { pageId: window.pageId, dataType: 'json', ... });
 
-**Exception — Doc Chat Modal (page 10022710201):** JSX chạy trên page 10022710201, gọi Ajax Callbacks cũng nằm trên page 10022710201 → dùng `pageId: 10022710201`. Đây không phải cross-page call.
+// Sai — Application Process cho feature page-specific:
+apex.server.process('chatSend', data, { dataType: 'json', ... });  // không có pageId
+```
 
-Chat System (Messenger page) và tất cả các module khác vẫn dùng Application Processes (không có `pageId`).
+`window.pageId` được set trong "Function and Global Variable Declaration" của mọi page: `var pageId = $v('pFlowStepId')`.
+
+**Chỉ dùng Application Process (không pageId) cho:**
+- `appEvents` — Page 0, long-poll toàn hệ thống
+- `chatHeartbeat` — Page 0, online presence toàn hệ thống
+
+`apex.server.process` với `pageId` của một page khác → `parsererror` ("Process not found") trong APEX 24.2.
 
 ### $v('G_AUS_ID') always returns ""
 

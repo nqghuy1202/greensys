@@ -36,6 +36,7 @@ function apexCall(processName, params = {}) {
         x04: params.x04 || '', x05: params.x05 || '',
       },
       {
+        pageId:   window.pageId,   // set in "Function and Global Variable Declaration": var pageId = $v('pFlowStepId')
         dataType: 'json',
         success: resolve,
         error: (_, err) => reject(new Error(err)),

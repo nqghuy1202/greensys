@@ -1,5 +1,28 @@
 # APEX Patterns
 
+## CSS Theming — Map vào design token hệ thống
+
+CSS của chat (`chat-system/chat-page.css` scope `#chat-root`, `doc-chat/doc-chat.css` scope `#doc-chat-root`) **không hardcode màu**. Bảng màu cục bộ được khai báo MỘT chỗ (khối biến đầu file) rồi map vào token toàn hệ thống ERP, có fallback:
+
+| Biến cục bộ | Map sang token hệ thống |
+|-------------|-------------------------|
+| `--primary` / `-600` / `-700` | `var(--primary-color, #15674C)` |
+| `--primary-50` / `-100`, `--surface-active` | `var(--fourth-color, #E1F0EB)` |
+| `--surface` | `var(--white-color, #FFFFFF)` |
+| `--border` / `--border-2` | `var(--border-color, #E6E6E6)` |
+| `--danger` | `var(--red-color, #D81F25)` |
+| `--info` / `--info-50` | `var(--blue-color)` / `var(--blue-light-color)` |
+| `--warning` / `--away` | `var(--orange-color, #ECA12B)` |
+| `--online` | `var(--green-color, #319574)` |
+| `--sh-*` (box-shadow) | nền đen mềm `rgba(0,0,0,…)` |
+
+Quy ước bổ sung:
+- **Focus glow** dùng `box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color, #15674C) 15%, transparent)` — đúng công thức focus của hệ thống (không dùng `rgba()` xanh cứng).
+- **Active state** (chip/tab/item) dùng bộ 3 dòng: `color: var(--primary-color)`, `background-color: var(--fourth-color)`, `border-color: var(--a-button-state-border-color, var(--a-button-type-border-color, var(--a-button-border-color)))`.
+- **Avatar nhóm/chứng từ** dùng nền phẳng `var(--primary-color)` (không gradient). Avatar per-user vẫn dùng `hsl(aus_id*47 % 360, 55%, 52%)`.
+- **Type tabs "Nhắn tin/Tạo nhóm"** (`.emp-type-tab`, `.dc-type-tab`) là segmented control kiểu Claude: track `--bg-2`, tab active = thẻ `--surface` + shadow mảnh.
+- Đổi màu toàn module → sửa **khối biến đầu file**, không sửa rải rác từng rule.
+
 ## Page Item Naming Convention — Critical
 
 **Tất cả APEX page** khai báo trong **Function and Global Variable Declaration**:

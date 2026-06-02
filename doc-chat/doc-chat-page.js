@@ -14,10 +14,24 @@
   var PAGE_ID         = 10022710201;
   var AUS_ID          = Number(window.CHAT_AUS_ID || 0);
   var activeConvId    = null;
+  var activeFilter    = 'ALL';
   var showInfo        = true;
   var typingUsers     = {};   // aus_id → name
   var typingTimers    = {};   // aus_id → timer handle
   var selectedMembers = {};   // aus_id → { name, hue } — create dialog state
+  var isSending       = false;
+  var lastSentAt      = 0;    // ms timestamp — suppress duplicate reload from apex:chatEvent
+
+  // Modal này load trong iframe — global.js (chạy ở TRANG CHA) fire apex:chatEvent trên
+  // parent document, dùng jQuery CỦA TRANG CHA.
+  // QUAN TRỌNG: jQuery custom event (.trigger) KHÔNG vượt giữa 2 instance jQuery khác nhau —
+  // mỗi jQuery lưu handler dưới expando riêng. Nếu bind bằng apex.jQuery của IFRAME lên parent
+  // document thì parentJQuery.trigger() sẽ không bao giờ gọi tới handler đó → "event tới mà
+  // không chạy". Phải bind bằng đúng jQuery của trang cha. Xem REVIEW-realtime-flow.
+  var inIframe  = (window.parent && window.parent !== window);
+  var eventWin  = inIframe ? window.parent : window;
+  var $evt      = (eventWin.apex && eventWin.apex.jQuery) ? eventWin.apex.jQuery : $;
+  var $eventDoc = $evt(eventWin.document);
 
   // ── APEX helpers ─────────────────────────────────────────────────────────────
 
@@ -53,7 +67,7 @@
     dcHtml('dcConvListHtml', {
       x01: $v('P' + pageId + '_DOC_TYPE'),
       x02: $v('P' + pageId + '_DOC_NO'),
-      x03: $v('P' + pageId + '_CONV_FILTER') || 'ALL',
+      x03: activeFilter,
       x04: $v('P' + pageId + '_SEARCH_QUERY') || ''
     }, 'dc-conv-list', onDone);
   }
@@ -129,8 +143,8 @@
     convId = Number(convId);
     if (convId === activeConvId) return;
     activeConvId = convId;
-    $v('P' + pageId + '_CONV_ID', String(convId));
-    $v('P' + pageId + '_REPLY_TO_MSG_ID', '');
+    $s('P' + pageId + '_CONV_ID', String(convId));
+    $s('P' + pageId + '_REPLY_TO_MSG_ID', '');
 
     // Highlight active item
     $('.convo-item').removeClass('active');
@@ -145,9 +159,23 @@
     document.getElementById('dc-reply-banner').style.display = 'none';
     $('#dc-composer').removeClass('with-reply');
 
-    // Update thread header
-    var name = $('.convo-item[data-conv-id="' + convId + '"] .convo-name').text();
+    // Update thread header — title + avatar
+    var $item = $('.convo-item[data-conv-id="' + convId + '"]');
+    var name  = $item.find('.convo-name').text();
     document.getElementById('dc-chat-head-title').textContent = name;
+
+    // Clone avatar from the selected convo-item and inject into chat-head
+    var headEl = document.getElementById('dc-chat-head');
+    if (headEl) {
+      var $existingAv = $(headEl).find('.chat-head-avatar');
+      if ($existingAv.length) $existingAv.remove();
+      var $srcAv = $item.find('.convo-avatar').first();
+      if ($srcAv.length) {
+        var $av = $srcAv.clone().removeClass('convo-avatar');
+        $av.addClass('chat-head-avatar').css({ width: 36, height: 36, fontSize: 13 });
+        $(headEl).prepend($av);
+      }
+    }
 
     loadThread();
     loadInfo();
@@ -160,6 +188,7 @@
   // ── Send message ───────────────────────────────────────────────────────────────
 
   function sendMessage() {
+    if (isSending) return;
     var input   = document.getElementById('dc-msg-input');
     var body    = (input.value || '').trim();
     var replyId = $v('P' + pageId + '_REPLY_TO_MSG_ID') || '';
@@ -167,8 +196,10 @@
 
     if (!body || !activeConvId) return;
 
+    isSending  = true;
+    lastSentAt = Date.now();
     input.value = '';
-    $v('P' + pageId + '_REPLY_TO_MSG_ID', '');
+    $s('P' + pageId + '_REPLY_TO_MSG_ID', '');
     document.getElementById('dc-reply-banner').style.display = 'none';
     $('#dc-composer').removeClass('with-reply');
 
@@ -178,14 +209,18 @@
       x03: replyId,
       x04: String(partner)
     }, function(data) {
+      isSending = false;
       if (data && data.error) {
         apex.message.showErrors([{ type: 'error', message: 'Gửi thất bại: ' + data.error }]);
         console.error('[DocChat] docChatSend error:', data.error);
         return;
       }
+      // Reload thread immediately so sender sees their message.
+      // apex:chatEvent sẽ reload lại cho các người nhận — xem handler bên dưới.
       loadThread();
       loadConvList();
     }, function(xhr) {
+      isSending = false;
       var msg = xhr.responseText || 'Lỗi kết nối';
       apex.message.showErrors([{ type: 'error', message: 'Gửi thất bại: ' + msg }]);
       console.error('[DocChat] docChatSend xhr error:', msg);
@@ -227,12 +262,36 @@
   }
 
   // ── Real-time events from global.js ───────────────────────────────────────────
+  // Modal này là iframe — global.js trigger apex:chatEvent trên parent document.
+  // Lắng nghe trên $eventDoc (= parent doc khi trong iframe, own doc khi standalone).
+  // Handler được đặt tên để có thể cleanup khi iframe unload, tránh stale handler.
 
-  $(document).on('apex:chatEvent', function(_, ev) {
+  // Hiện "✓ Đã xem" dưới tin CUỐI CỦA MÌNH khi đối phương đọc (event 'read').
+  // Client-side: thread HTML không render sẵn trạng thái seen nên chèn nhãn trực tiếp.
+  // loadThread() reload sẽ xóa nhãn — đúng ý: gửi tin mới thì seen reset tới khi được đọc lại.
+  function showSeen() {
+    var box = document.getElementById('dc-messages');
+    if (!box) return;
+    var old = box.querySelector('.msg-seen');
+    if (old) old.remove();
+    var mine = box.querySelectorAll('.msg-row.mine');
+    if (!mine.length) return;
+    var col = mine[mine.length - 1].querySelector('.msg-col');
+    if (!col) return;
+    var tag = document.createElement('div');
+    tag.className = 'msg-seen';
+    tag.textContent = '✓ Đã xem';
+    col.appendChild(tag);
+  }
+
+  function onChatEvent(_, ev) {
     if (ev.type === 'message') {
       loadConvList();
       if (String(ev.conv_id) === String(activeConvId)) {
-        loadThread();
+        // Bỏ qua loadThread nếu chính user vừa gửi trong vòng 3s —
+        // sendMessage callback đã reload rồi, tránh flash/double-render.
+        var justSentHere = (Date.now() - lastSentAt) < 3000;
+        if (!justSentHere) loadThread();
         dcJson('docChatRead', { x01: String(activeConvId) });
       }
     } else if (ev.type === 'typing') {
@@ -241,7 +300,18 @@
       }
     } else if (ev.type === 'typing_stop') {
       if (String(ev.conv_id) === String(activeConvId)) hideTyping(ev.aus_id);
+    } else if (ev.type === 'read') {
+      if (Number(ev.aus_id) !== AUS_ID && String(ev.conv_id) === String(activeConvId)) {
+        showSeen();
+      }
     }
+  }
+
+  $eventDoc.on('apex:chatEvent', onChatEvent);
+
+  // Khi iframe unload (modal đóng), gỡ handler khỏi parent document
+  $(window).on('unload', function() {
+    $eventDoc.off('apex:chatEvent', onChatEvent);
   });
 
   // ── Event bindings (delegated — content is dynamically loaded) ────────────────
@@ -251,9 +321,14 @@
     selectConv($(this).data('conv-id'));
   });
 
-  // Filter tabs
-  $(document).on('click', '.convo-tab[data-filter]', function() {
-    $v('P' + pageId + '_CONV_FILTER', $(this).data('filter'));
+  // Filter tabs (.lp-filter-chip server-render + .convo-tab markup tĩnh)
+  $(document).on('click', '.lp-filter-chip[data-filter], .convo-tab[data-filter]', function() {
+    activeFilter = $(this).data('filter');
+    // .convo-tab tĩnh → tự toggle active giữa các tab anh em
+    if ($(this).hasClass('convo-tab')) {
+      $(this).closest('.convo-tabs').find('.convo-tab').removeClass('active');
+      $(this).addClass('active');
+    }
     loadConvList();
   });
 
@@ -263,7 +338,7 @@
     var q = this.value;
     clearTimeout(convSearchTimer);
     convSearchTimer = setTimeout(function() {
-      $v('P' + pageId + '_SEARCH_QUERY', q);
+      $s('P' + pageId + '_SEARCH_QUERY', q);
       loadConvList();
     }, 350);
   });
@@ -302,7 +377,7 @@
   // Reply to message
   $(document).on('click', '.msg-hover-action[data-reply-id]', function(e) {
     e.stopPropagation();
-    $v('P' + pageId + '_REPLY_TO_MSG_ID', String($(this).data('reply-id')));
+    $s('P' + pageId + '_REPLY_TO_MSG_ID', String($(this).data('reply-id')));
     document.getElementById('dc-reply-preview').textContent = ($(this).data('reply-body') || '').substring(0, 80);
     document.getElementById('dc-reply-banner').style.display = 'flex';
     $('#dc-composer').addClass('with-reply');
@@ -311,7 +386,7 @@
 
   // Cancel reply
   $(document).on('click', '#dc-reply-cancel', function() {
-    $v('P' + pageId + '_REPLY_TO_MSG_ID', '');
+    $s('P' + pageId + '_REPLY_TO_MSG_ID', '');
     document.getElementById('dc-reply-banner').style.display = 'none';
     $('#dc-composer').removeClass('with-reply');
   });
@@ -470,6 +545,9 @@
 
   // Submit
   $(document).on('click', '#dc-create-submit', function() {
+    var $btn = $(this);
+    if ($btn.data('submitting')) return;
+
     var convType = $('input[name="dc-conv-type"]:checked').val() || 'DM';
     var nameEl   = document.getElementById('dc-create-name');
     var name     = nameEl ? nameEl.value.trim() : '';
@@ -486,6 +564,8 @@
       if (nameEl) nameEl.value = name;
     }
 
+    $btn.data('submitting', true).prop('disabled', true);
+
     dcJson('docChatCreate', {
       x01: convType,
       x02: name,
@@ -493,6 +573,7 @@
       x04: $v('P' + pageId + '_DOC_TYPE'),
       x05: $v('P' + pageId + '_DOC_NO')
     }, function(data) {
+      $btn.removeData('submitting').prop('disabled', false);
       if (data && data.error) {
         apex.message.showErrors([{ type: 'error', message: 'Tạo thất bại: ' + data.error }]);
         console.error('[DocChat] docChatCreate error:', data.error);
@@ -503,6 +584,7 @@
         loadConvList(function() { selectConv(data.conv_id); });
       }
     }, function(xhr) {
+      $btn.removeData('submitting').prop('disabled', false);
       console.error('[DocChat] docChatCreate xhr error:', xhr.responseText);
       apex.message.showErrors([{ type: 'error', message: 'Tạo thất bại: ' + (xhr.responseText || 'Lỗi kết nối') }]);
     });
@@ -523,11 +605,11 @@
     try { ctx = JSON.parse(sessionStorage.getItem('docChatCtx') || '{}'); } catch(e) {}
 
     // Set APEX page items from context
-    if (ctx.doc_type)   $v('P' + pageId + '_DOC_TYPE',   ctx.doc_type);
-    if (ctx.doc_no)     $v('P' + pageId + '_DOC_NO',     ctx.doc_no);
-    if (ctx.doc_label)  $v('P' + pageId + '_DOC_LABEL',  ctx.doc_label);
-    if (ctx.doc_status) $v('P' + pageId + '_DOC_STATUS', ctx.doc_status);
-    if (ctx.doc_total)  $v('P' + pageId + '_DOC_TOTAL',  ctx.doc_total);
+    if (ctx.doc_type)   $s('P' + pageId + '_DOC_TYPE',   ctx.doc_type);
+    if (ctx.doc_no)     $s('P' + pageId + '_DOC_NO',     ctx.doc_no);
+    if (ctx.doc_label)  $s('P' + pageId + '_DOC_LABEL',  ctx.doc_label);
+    if (ctx.doc_status) $s('P' + pageId + '_DOC_STATUS', ctx.doc_status);
+    if (ctx.doc_total)  $s('P' + pageId + '_DOC_TOTAL',  ctx.doc_total);
 
     // Modal title (inject doc label into dialog titlebar)
     if (ctx.doc_label && ctx.doc_no) {

@@ -56,6 +56,12 @@ Paste into `Shared Components → Themes → Edit → JavaScript` (runs on every
 (function () {
     'use strict';
     if (window._eventsPoll) return;
+    // Chỉ TOP window được poll. Page chạy trong iframe (vd Doc Chat modal page 10022710201)
+    // KHÔNG tự poll — nó đi nhờ poll của trang cha; trang cha dispatch apex:chatEvent trên
+    // parent.document (chính chỗ doc-chat-page.js lắng nghe). Nếu iframe cũng poll thì có 2 poll
+    // cùng aus_id giành 1 waiter (events.js: 1 waiter/user) → đá nhau (replaced) → rớt event,
+    // và event của iframe lại bắn vào document iframe nơi không có handler. Xem REVIEW-realtime-flow.
+    if (window.parent && window.parent !== window) return;
 
     $(document).ready(function () {
         var ausId = $v('P0_AUS_ID');
@@ -95,6 +101,20 @@ Paste into `Shared Components → Themes → Edit → JavaScript` (runs on every
 ```
 
 **`P0_AUS_ID`** is a Page 0 hidden item (has a DOM element, so `$v()` works). Do NOT use `$v('G_AUS_ID')` — always returns `""` because `G_AUS_ID` is an Application Item with no DOM element.
+
+### Ranh giới kênh `appEvents` (đọc trước khi thêm feature real-time)
+
+- **Kênh là lossy single-shot.** `events.js` chỉ giữ **1 waiter/aus_id**; mỗi resolve trả đúng 1
+  payload rồi xóa waiter. Feature nào *bắt buộc nhận đủ gói* (như chat message) **không được tin
+  vào việc tín hiệu luôn tới** — phải tự bù bằng re-fetch DB (handler hiện re-fetch qua `loadThread`)
+  và dựa vào **buffer at-least-once** ở `events.js` (xếp hàng `message`/`read`/`notification` khi
+  không có waiter; xem `deliverToUser`). Notification thì lossy-OK vì chuông tự query lại DB.
+- **Iframe KHÔNG tự poll.** Page mở trong iframe (Doc Chat modal) đi nhờ poll của trang cha — guard
+  `if (window.parent !== window) return;` trong `global.js`. Hai poll cùng aus_id sẽ đá nhau và rớt
+  event. Chi tiết: `docs/reviews/REVIEW-realtime-flow-2026-06-02.md`.
+- **Giới hạn:** đa tab cùng user vẫn chỉ có 1 poll thắng tại một thời điểm; buffer đảm bảo *không
+  mất* nhưng *không fan-out* mọi tab. Fan-out đúng cần nhiều waiter/user + cursor (đánh đổi ORDS
+  thread — xem `08-archive.md`).
 
 ## APEX Callback: appEvents (replaces notificationWait)
 
