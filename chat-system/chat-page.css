@@ -268,7 +268,7 @@
   font-size: 12px; color: var(--primary-color, #15674C); font-weight: 500;
 }
 .emp-chip .av {
-  width: 18px; height: 18px; border-radius: 999px;
+  width: 18px; height: 18px; border-radius: 999px; position: relative;
   display: grid; place-items: center; color: white; font-size: 8.5px; font-weight: 700;
 }
 .emp-chip .x {
@@ -353,7 +353,7 @@
 }
 .cs-head-avatar {
   width: 36px; height: 36px; border-radius: var(--r-full);
-  flex-shrink: 0; display: grid; place-items: center;
+  flex-shrink: 0; display: grid; place-items: center; position: relative;
   color: white; font-weight: 600; font-size: 13px;align-content: center;
 }
 .cs-head-avatar.group { background: var(--primary-color, #15674C); }
@@ -464,6 +464,7 @@
 .convo-avatar .presence { position:absolute; bottom:0; right:0; width:11px; height:11px; border-radius:999px; background:var(--online); box-shadow:0 0 0 2px var(--surface); }
 .convo-avatar .presence.away    { background:var(--away); }
 .convo-avatar .presence.offline { background:var(--text-4); }
+.convo-avatar>.av-img,.member-avatar>.av-img,.cs-conv-info-avatar>.av-img,.emp-item .av>.av-img,.emp-chip .av>.av-img,.cs-head-avatar>.av-img,.msg-avatar>.av-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit;}
 .convo-sender-badge { position:absolute; bottom:-3px; right:-3px; width:20px; height:20px; border-radius:999px; border:2px solid var(--surface); display:grid; place-items:center; color:white; font-size:9px; font-weight:700; z-index:1; }
 .convo-item.active .convo-sender-badge { border-color:var(--primary-50); }
 .convo-content { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; justify-content:center; }
@@ -480,6 +481,32 @@
 .convo-badge { min-width:18px; height:18px; padding:0 5px; border-radius:999px; background:var(--primary); color:white; font-size:11px; font-weight:600; display:grid; place-items:center; }
 .convo-row-doc  { margin-top:2px; }
 .convo-doc-tag  { font-size:10.5px; color:var(--primary-700); background:var(--primary-50); padding:1px 7px; border-radius:var(--r-full); border:1px solid var(--primary-100); }
+
+/* Pin: chỉ báo (flag inline trong row1) + nút menu "..." (absolute, hiện khi hover) */
+.convo-pin-flag { font-size:10px; color:var(--primary-color, #15674C); flex-shrink:0; transform:rotate(20deg); }
+.convo-menu {
+  position:absolute; top:7px; right:8px; width:22px; height:22px;
+  border-radius:6px; display:grid; place-items:center;
+  border:1px solid transparent; background:transparent; color:var(--text-3);
+  font-size:12px; opacity:0; transition:opacity .12s, background .12s, color .12s; z-index:2;
+}
+.convo-item:hover .convo-menu {
+  opacity:1; background:var(--surface);
+  border-color:var(--border); box-shadow:0 1px 2px rgba(0,0,0,.08);
+}
+.convo-menu:hover { color:var(--primary-color, #15674C); }
+.convo-item:hover .convo-time { display:none; }
+.cs-convo-menu {
+  position:fixed; display:none; z-index:9999; min-width:170px; padding:4px;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md); box-shadow:var(--sh-3);
+}
+.cs-convo-menu-item {
+  display:flex; align-items:center; gap:10px; width:100%; padding:8px 10px;
+  border:none; background:transparent; cursor:pointer; border-radius:var(--r-sm);
+  font-size:13px; color:var(--text-1); text-align:left;
+}
+.cs-convo-menu-item:hover { background:var(--surface-hover); }
+.cs-convo-menu-item .fa { color:var(--text-3); width:14px; }
 .convo-section-label { font-size:10.5px; font-weight:600; color:var(--text-3); padding:10px 8px 4px; letter-spacing:.06em; text-transform:uppercase; }
 
 /* Messages */
@@ -488,7 +515,7 @@
 .msg-row { display:flex; gap:10px; padding:2px 16px; position:relative; }
 .msg-row:hover { background: color-mix(in srgb, var(--primary-color, #15674C) 4%, transparent); }
 .msg-row.mine  { flex-direction:row-reverse; }
-.msg-avatar { width:32px; height:32px; border-radius:999px; flex-shrink:0; display:grid; place-items:center; color:white; font-weight:600; font-size:12px; }
+.msg-avatar { width:32px; height:32px; border-radius:999px; flex-shrink:0; display:grid; place-items:center; color:white; font-weight:600; font-size:12px; position:relative; }
 .msg-avatar.hidden { display: none; }
 .msg-col { display:flex; flex-direction:column; max-width:62%; min-width:0; gap:4px; }
 .msg-row.mine .msg-col { align-items:flex-end; }

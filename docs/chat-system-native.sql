@@ -4,7 +4,7 @@
 -- Gọi từ chat-page.js: apex.server.process(name, data, { pageId: window.pageId, ... })
 --
 -- HTML-returning (mới — thay JSON callbacks cũ):
---   chatConvListHtml   x01=filter(ALL/DM/GROUP/DOC) | x02=search | x03=quick(UNREAD/PINNED/MENTION)
+--   chatConvListHtml   x01=filter(ALL/DM/GROUP/DOC) | x02=search | x03=quick(UNREAD/PINNED)
 --   chatMsgThreadHtml  x01=conv_id
 --   chatMembersHtml    x01=conv_id
 --   chatContactsHtml   (không tham số)
@@ -14,15 +14,25 @@
 --   chatCreate  x01=conv_type | x02=name | x03=members JSON
 --   chatRead    x01=conv_id
 --   chatTyping  x01=conv_id
+--   chatPin     x01=conv_id | x02=1/0   (ghim/bỏ ghim — local DB, per-user)
+-- ============================================================
+--
+-- SCHEMA (chạy 1 lần như DEV24 trước khi deploy filter "Ghim"):
+--   ALTER TABLE CHAT_PARTICIPANTS ADD (
+--     is_pinned NUMBER(1) DEFAULT 0 NOT NULL
+--       CONSTRAINT chk_part_pinned CHECK (is_pinned IN (0,1)));
+--   -- is_pinned: ghim hội thoại lên đầu danh sách, RIÊNG cho từng user.
+--   -- KHÁC với CHAT_CONVERSATIONS.pinned_msg_id (ghim 1 tin nhắn trong hội thoại).
 -- ============================================================
 
 
 -- ============================================================
 -- 1. chatConvListHtml
 --    Trả HTML danh sách hội thoại (cho #cs-conv-list)
---    x01=filter(ALL/DM/GROUP/DOC) | x02=search | x03=quick(UNREAD/PINNED/MENTION)
---    ALL / DM / GROUP: chỉ hiện doc_type IS NULL
---    DOC: chỉ hiện doc_type IS NOT NULL
+--    x01=filter(ALL/DM/GROUP/DOC) | x02=search | x03=quick(UNREAD/PINNED)
+--    ALL : tất cả hội thoại (gồm CẢ chứng từ)
+--    DM / GROUP: chỉ hội thoại chung (doc_type IS NULL)
+--    DOC : chỉ hội thoại chứng từ (doc_type IS NOT NULL)
 -- ============================================================
 DECLARE
   l_aus_id        NUMBER;
@@ -59,6 +69,17 @@ BEGIN
              )
              ELSE NVL(c.name, '(Không tên)')
            END AS display_name,
+           CASE c.conv_type
+             WHEN 'DM' THEN (
+               SELECT vf.v_file_name
+               FROM   CHAT_PARTICIPANTS p2
+               JOIN   APP_USERS  u2 ON u2.aus_id = p2.aus_id
+               JOIN   v_employees_v6 vf ON vf.emp_id = u2.emp_id
+               WHERE  p2.conv_id = c.conv_id AND p2.aus_id != l_aus_id
+               FETCH FIRST 1 ROW ONLY
+             )
+             ELSE NULL
+           END AS partner_img,
            -- DM: partner aus_id cho presence check và chatSend x04
            CASE c.conv_type
              WHEN 'DM' THEN (
@@ -69,6 +90,7 @@ BEGIN
              ELSE NULL
            END AS partner_aus_id,
            c.doc_type, c.doc_no,
+           p.is_pinned,
            c.last_msg_preview,
            CASE WHEN c.last_msg_date >= TRUNC(SYSDATE)
                 THEN TO_CHAR(c.last_msg_date, 'HH24:MI')
@@ -91,7 +113,7 @@ BEGIN
     FROM CHAT_CONVERSATIONS c
     JOIN CHAT_PARTICIPANTS  p ON p.conv_id = c.conv_id AND p.aus_id = l_aus_id
     WHERE (
-      (l_filter = 'ALL'   AND c.doc_type IS NULL)
+      l_filter = 'ALL'                                              -- ALL: gồm cả chứng từ
       OR (l_filter = 'DM'    AND c.conv_type = 'DM'      AND c.doc_type IS NULL)
       OR (l_filter = 'GROUP' AND c.conv_type = 'CHANNEL' AND c.doc_type IS NULL)
       OR (l_filter = 'DOC'   AND c.doc_type IS NOT NULL)
@@ -99,17 +121,23 @@ BEGIN
     AND (l_search IS NULL
          OR LOWER(NVL(c.name,''))             LIKE '%' || l_search || '%'
          OR LOWER(NVL(c.last_msg_preview,'')) LIKE '%' || l_search || '%')
-    AND (l_quick != 'UNREAD' OR
+    -- NVL(l_quick,'X') để khi KHÔNG bấm chip (l_quick NULL) điều kiện ra TRUE,
+    -- tránh logic 3-trị NULL loại nhầm hội thoại đã đọc hết.
+    AND (NVL(l_quick,'X') != 'UNREAD' OR
          (SELECT COUNT(*) FROM CHAT_MESSENGERS m
           WHERE m.conv_id = c.conv_id AND m.delete_date IS NULL
           AND m.msg_id > NVL(p.last_read_msg_id,0) AND m.from_aus_id != l_aus_id) > 0)
-    ORDER BY NVL(c.last_msg_date, c.create_date) DESC NULLS LAST
+    AND (NVL(l_quick,'X') != 'PINNED' OR p.is_pinned = 1)
+    ORDER BY p.is_pinned DESC, NVL(c.last_msg_date, c.create_date) DESC NULLS LAST
   ) LOOP
     l_found := l_found + 1;
     DECLARE
       l_name        VARCHAR2(200) := REGEXP_REPLACE(NVL(conv.display_name,'?'), '[[:cntrl:]]', '');
       l_unread      BOOLEAN       := conv.unread_count > 0;
-      l_cls         VARCHAR2(100) := 'convo-item' || CASE WHEN l_unread THEN ' unread' END;
+      l_pinned      BOOLEAN       := conv.is_pinned = 1;
+      l_cls         VARCHAR2(100) := 'convo-item'
+                                     || CASE WHEN l_unread THEN ' unread'  END
+                                     || CASE WHEN l_pinned THEN ' pinned'  END;
       l_badge_hue   VARCHAR2(10)  := TO_CHAR(MOD(NVL(conv.last_sender_aus_id, 0) * 47, 360));
       l_badge_initl VARCHAR2(4)   := UPPER(SUBSTR(NVL(conv.last_sender_word,'?'), 1, 1));
       l_is_mine     BOOLEAN       := (conv.last_sender_aus_id = l_aus_id);
@@ -142,9 +170,11 @@ BEGIN
             EXCEPTION WHEN NO_DATA_FOUND THEN NULL;
             END;
           END IF;
-          HTP.p('    <div class="convo-avatar" style="background:hsl(' || l_hue || ',55%,52%)">'
-                || NVL(l_initl,'?')
-                || '<span class="presence ' || l_pres || '"></span></div>');
+          HTP.p('    <div class="convo-avatar" style="background:hsl(' || l_hue || ',55%,52%)">');
+          IF conv.partner_img IS NOT NULL THEN
+            HTP.p('<img class="av-img" loading="lazy" onerror="this.remove()" src="' || HTF.ESCAPE_SC(conv.partner_img) || '">');
+          END IF;
+          HTP.p(NVL(l_initl,'?') || '<span class="presence ' || l_pres || '"></span></div>');
         END;
       ELSIF conv.doc_type IS NOT NULL THEN
         HTP.p('    <div class="convo-avatar doc"><span class="fa fa-file-text-o"></span></div>');
@@ -163,6 +193,9 @@ BEGIN
       HTP.p('  </div>');
       HTP.p('  <div class="convo-content">');
       HTP.p('    <div class="convo-row1">');
+      IF l_pinned THEN
+        HTP.p('      <span class="convo-pin-flag fa fa-thumb-tack" title="Đã ghim"></span>');
+      END IF;
       HTP.p('      <span class="convo-name">' || HTF.ESCAPE_SC(l_name) || '</span>');
       HTP.p('      <span class="convo-time">' || NVL(conv.display_time,'') || '</span>');
       HTP.p('    </div>');
@@ -184,13 +217,21 @@ BEGIN
         HTP.p('    </div>');
       END IF;
       HTP.p('  </div>');
+      -- Nút "..." (menu) — hiện khi hover. data-conv-menu cho JS mở dropdown ghim/bỏ ghim.
+      HTP.p('  <button type="button" class="convo-menu" data-conv-menu="1" data-conv-id="' || conv.conv_id
+            || '" data-pinned="' || CASE WHEN l_pinned THEN '1' ELSE '0' END
+            || '" title="Tùy chọn"><span class="fa fa-ellipsis-h"></span></button>');
       HTP.p('</div>');
     END;
   END LOOP;
 
   IF l_found = 0 THEN
     HTP.p('<div style="text-align:center;color:var(--text-3);padding:32px 16px;font-size:13px">');
-    IF l_filter = 'DOC' THEN
+    IF l_quick = 'PINNED' THEN
+      HTP.p('  Chưa ghim hội thoại nào.<br>Di chuột vào hội thoại rồi nhấn <span class="fa fa-thumb-tack"></span>.');
+    ELSIF l_quick = 'UNREAD' THEN
+      HTP.p('  Không có hội thoại chưa đọc.');
+    ELSIF l_filter = 'DOC' THEN
       HTP.p('  Chưa có hội thoại chứng từ nào.');
     ELSIF l_search IS NOT NULL THEN
       HTP.p('  Không tìm thấy kết quả.');
@@ -238,6 +279,7 @@ BEGIN
       SELECT /*+ MATERIALIZE */
         m.msg_id,
         m.from_aus_id,
+        u.emp_id,
         REGEXP_REPLACE(NVL(e.full_name, 'Unknown'), '[[:cntrl:]]', '') AS from_name,
         CASE WHEN m.delete_date IS NOT NULL THEN NULL ELSE m.body END  AS body,
         m.delete_date,
@@ -257,7 +299,9 @@ BEGIN
       ORDER  BY m.msg_id ASC
       FETCH FIRST 50 ROWS ONLY
     )
-    SELECT * FROM msg_raw
+    SELECT mr.*, vf.v_file_name AS img
+    FROM   msg_raw mr
+    LEFT JOIN v_employees_v6 vf ON vf.emp_id = mr.emp_id
   ) LOOP
     IF l_last_day IS NULL OR msg.msg_day > l_last_day THEN
       l_last_day := msg.msg_day;
@@ -278,8 +322,11 @@ BEGIN
       IF l_mine THEN
         HTP.p('  <div class="msg-avatar hidden"></div>');
       ELSE
-        HTP.p('  <div class="msg-avatar" style="background:hsl('
-              || MOD(msg.from_aus_id * 47, 360) || ',55%,52%)">' || l_av || '</div>');
+        HTP.p('  <div class="msg-avatar" style="background:hsl(' || MOD(msg.from_aus_id * 47, 360) || ',55%,52%)">');
+        IF msg.img IS NOT NULL THEN
+          HTP.p('<img class="av-img" loading="lazy" onerror="this.remove()" src="' || HTF.ESCAPE_SC(msg.img) || '">');
+        END IF;
+        HTP.p(l_av || '</div>');
       END IF;
 
       HTP.p('  <div class="msg-col">');
@@ -387,11 +434,13 @@ BEGIN
       l_p_pres VARCHAR2(10)  := 'offline';
       l_p_hue  VARCHAR2(10);
       l_p_av   VARCHAR2(4);
+      l_p_img  VARCHAR2(1000);
     BEGIN
       BEGIN
         WITH partner_raw AS (
           SELECT /*+ MATERIALIZE */
             p.aus_id,
+            u.emp_id,
             REGEXP_REPLACE(NVL(e.full_name,'Unknown'),'[[:cntrl:]]','') AS full_name,
             REGEXP_REPLACE(NVL(d.dep_name,''),'[[:cntrl:]]','')         AS dep_name
           FROM CHAT_PARTICIPANTS p
@@ -401,10 +450,12 @@ BEGIN
           WHERE p.conv_id = l_conv_id AND p.aus_id != l_aus_id
         )
         SELECT r.aus_id, r.full_name, r.dep_name,
-               CASE WHEN o.last_seen >= l_online_cutoff THEN 'online' ELSE 'offline' END
-        INTO   l_p_aus, l_p_name, l_p_dept, l_p_pres
+               CASE WHEN o.last_seen >= l_online_cutoff THEN 'online' ELSE 'offline' END,
+               vf.v_file_name
+        INTO   l_p_aus, l_p_name, l_p_dept, l_p_pres, l_p_img
         FROM   partner_raw r
         LEFT JOIN CHAT_USER_ONLINE o ON o.aus_id = r.aus_id
+        LEFT JOIN v_employees_v6 vf ON vf.emp_id = r.emp_id
         FETCH FIRST 1 ROW ONLY;
       EXCEPTION WHEN NO_DATA_FOUND THEN NULL;
       END;
@@ -414,9 +465,11 @@ BEGIN
 
       HTP.p('  <div class="info-section-title"><span class="fa fa-user"></span> Thông tin liên hệ</div>');
       HTP.p('  <div class="cs-conv-info-card">');
-      HTP.p('    <div class="cs-conv-info-avatar dm" style="background:hsl(' || l_p_hue || ',55%,52%)">'
-            || NVL(l_p_av,'?')
-            || '<span class="presence ' || l_p_pres || '"></span></div>');
+      HTP.p('    <div class="cs-conv-info-avatar dm" style="background:hsl(' || l_p_hue || ',55%,52%)">');
+      IF l_p_img IS NOT NULL THEN
+        HTP.p('<img class="av-img" loading="lazy" onerror="this.remove()" src="' || HTF.ESCAPE_SC(l_p_img) || '">');
+      END IF;
+      HTP.p(NVL(l_p_av,'?') || '<span class="presence ' || l_p_pres || '"></span></div>');
       HTP.p('    <div class="cs-conv-info-name">' || HTF.ESCAPE_SC(l_p_name) || '</div>');
       IF l_p_dept IS NOT NULL THEN
         HTP.p('    <div class="cs-conv-info-type">' || HTF.ESCAPE_SC(l_p_dept) || '</div>');
@@ -445,6 +498,7 @@ BEGIN
         SELECT /*+ MATERIALIZE */
           p.aus_id,
           p.is_admin,
+          u.emp_id,
           REGEXP_REPLACE(NVL(e.full_name, 'Unknown'), '[[:cntrl:]]', '') AS full_name,
           REGEXP_REPLACE(NVL(d.dep_name, ''),          '[[:cntrl:]]', '') AS dep_name
         FROM CHAT_PARTICIPANTS p
@@ -453,10 +507,11 @@ BEGIN
         LEFT JOIN DEPARTMENTS d ON d.dep_id = e.dep_id
         WHERE p.conv_id = l_conv_id
       )
-      SELECT r.aus_id, r.is_admin, r.full_name, r.dep_name,
+      SELECT r.aus_id, r.is_admin, r.full_name, r.dep_name, vf.v_file_name AS img,
              CASE WHEN o.last_seen >= l_online_cutoff THEN 'online' ELSE 'offline' END AS presence
       FROM members_raw r
       LEFT JOIN CHAT_USER_ONLINE o ON o.aus_id = r.aus_id
+      LEFT JOIN v_employees_v6 vf ON vf.emp_id = r.emp_id
       ORDER BY r.is_admin DESC, r.full_name
     ) LOOP
       l_count := l_count + 1;
@@ -467,6 +522,9 @@ BEGIN
       BEGIN
         HTP.p('<div class="member-row">');
         HTP.p('  <div class="member-avatar" style="background:hsl(' || l_hue || ',55%,52%)">');
+        IF mem.img IS NOT NULL THEN
+          HTP.p('    <img class="av-img" loading="lazy" onerror="this.remove()" src="' || HTF.ESCAPE_SC(mem.img) || '">');
+        END IF;
         HTP.p('    ' || NVL(l_av, '?'));
         HTP.p('    <span class="presence ' || mem.presence || '"></span>');
         HTP.p('  </div>');
@@ -535,6 +593,7 @@ BEGIN
       WITH users_raw AS (
         SELECT /*+ MATERIALIZE */
           u.aus_id,
+          u.emp_id,
           REGEXP_REPLACE(NVL(e.full_name, 'Unknown'), '[[:cntrl:]]', '') AS full_name,
           REGEXP_REPLACE(NVL(d.dep_name, 'Khác'),     '[[:cntrl:]]', '') AS dep_name
         FROM APP_USERS u
@@ -543,11 +602,12 @@ BEGIN
         WHERE u.aus_id != l_aus_id
           AND u.status = 'Y'
       )
-      SELECT r.aus_id, r.full_name, r.dep_name,
+      SELECT r.aus_id, r.full_name, r.dep_name, vf.v_file_name AS img,
              COUNT(*) OVER (PARTITION BY r.dep_name) AS dep_count,
              CASE WHEN o.last_seen >= l_online_cutoff THEN 'online' ELSE 'offline' END AS presence
       FROM   users_raw r
       LEFT JOIN CHAT_USER_ONLINE o ON o.aus_id = r.aus_id
+      LEFT JOIN v_employees_v6 vf ON vf.emp_id = r.emp_id
       ORDER  BY r.dep_name, r.full_name
     ) LOOP
       IF usr.dep_name <> l_prev_dep THEN
@@ -557,17 +617,22 @@ BEGIN
         l_prev_dep := usr.dep_name;
       END IF;
       DECLARE
-        l_av   VARCHAR2(4)   := UPPER(SUBSTR(REGEXP_SUBSTR(usr.full_name, '\S+$'), 1, 1));
-        l_hue  VARCHAR2(10)  := TO_CHAR(MOD(usr.aus_id * 47, 360));
-        l_name VARCHAR2(200) := HTF.ESCAPE_SC(usr.full_name);
-        l_dept VARCHAR2(200) := HTF.ESCAPE_SC(usr.dep_name);
+        l_av   VARCHAR2(4)    := UPPER(SUBSTR(REGEXP_SUBSTR(usr.full_name, '\S+$'), 1, 1));
+        l_hue  VARCHAR2(10)   := TO_CHAR(MOD(usr.aus_id * 47, 360));
+        l_name VARCHAR2(200)  := HTF.ESCAPE_SC(usr.full_name);
+        l_dept VARCHAR2(200)  := HTF.ESCAPE_SC(usr.dep_name);
+        l_img  VARCHAR2(1000) := usr.img;
       BEGIN
         HTP.p('<div class="emp-item"');
         HTP.p('     data-aus-id="' || usr.aus_id || '"');
         HTP.p('     data-name="'   || REPLACE(l_name, '"', '&quot;') || '"');
         HTP.p('     data-dept="'   || REPLACE(l_dept, '"', '&quot;') || '"');
+        HTP.p('     data-img="'    || HTF.ESCAPE_SC(NVL(l_img,'')) || '"');
         HTP.p('     data-hue="'    || l_hue || '">');
         HTP.p('  <div class="av" style="background:hsl(' || l_hue || ',55%,52%)">');
+        IF l_img IS NOT NULL THEN
+          HTP.p('    <img class="av-img" loading="lazy" onerror="this.remove()" src="' || HTF.ESCAPE_SC(l_img) || '">');
+        END IF;
         HTP.p('    ' || NVL(l_av, '?'));
         HTP.p('    <span class="pres ' || usr.presence || '"></span>');
         HTP.p('  </div>');
@@ -768,5 +833,41 @@ BEGIN
 EXCEPTION
   WHEN OTHERS THEN
     BEGIN UTL_HTTP.END_RESPONSE(l_resp); EXCEPTION WHEN OTHERS THEN NULL; END;
+    HTP.p('{"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}');
+END;
+
+
+-- ============================================================
+-- 9. chatPin  (Action-only — LOCAL DB, không relay Node)
+--    x01 = conv_id | x02 = 1 (ghim) / 0 (bỏ ghim)
+--    Ghim là trạng thái RIÊNG mỗi user (CHAT_PARTICIPANTS.is_pinned),
+--    người khác không cần biết → không cần đẩy event qua Node.
+-- ============================================================
+DECLARE
+  l_aus_id NUMBER;
+  l_pin    NUMBER := CASE WHEN TRIM(apex_application.g_x02) = '1' THEN 1 ELSE 0 END;
+BEGIN
+  OWA_UTIL.MIME_HEADER('application/json', TRUE, 'UTF-8');
+  IF :APP_USER IS NULL OR :APP_USER IN ('nobody','NOBODY') THEN
+    HTP.p('{"error":"auth"}'); RETURN;
+  END IF;
+  BEGIN
+    SELECT aus_id INTO l_aus_id FROM APP_USERS WHERE LOWER(user_name) = LOWER(:APP_USER);
+  EXCEPTION WHEN NO_DATA_FOUND THEN
+    HTP.p('{"error":"user_not_found"}'); RETURN;
+  END;
+  IF TRIM(apex_application.g_x01) IS NULL THEN
+    HTP.p('{"error":"conv_id required"}'); RETURN;
+  END IF;
+
+  UPDATE CHAT_PARTICIPANTS
+     SET is_pinned = l_pin
+   WHERE conv_id = TO_NUMBER(apex_application.g_x01)
+     AND aus_id  = l_aus_id;
+  COMMIT;
+
+  HTP.p('{"status":"ok","pinned":' || l_pin || '}');
+EXCEPTION
+  WHEN OTHERS THEN
     HTP.p('{"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}');
 END;

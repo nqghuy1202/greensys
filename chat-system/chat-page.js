@@ -12,7 +12,7 @@
   var AUS_ID          = Number(window.CHAT_AUS_ID || 0);
   var activeConvId    = null;
   var activeTab       = 'all';   // all | dm | group | doc
-  var activeQuick     = null;    // null | unread | pinned | mention
+  var activeQuick     = null;    // null | unread | pinned   (@Tôi/mention tạm ẩn — chưa có model)
   var activeConvType  = 'DM';   // DM | CHANNEL — current compose mode
   var showInfo        = true;
   var isSending       = false;
@@ -341,6 +341,70 @@
     loadConvList();
   });
 
+  // ── Convo menu (Zalo "...") — ghim/bỏ ghim hội thoại ──────────────────
+  function pinConv(convId, next) {
+    csJson('chatPin', { x01: String(convId), x02: next }, function(data) {
+      if (data && data.error) {
+        apex.message.showErrors([{ type: 'error', message: 'Ghim thất bại: ' + data.error }]);
+        return;
+      }
+      loadConvList();
+    }, function(xhr) {
+      apex.message.showErrors([{ type: 'error',
+        message: 'Ghim thất bại (chatPin): ' + (xhr.responseText || 'callback chưa được tạo trên page?') }]);
+    });
+  }
+
+  function closeConvMenu() {
+    var m = document.getElementById('cs-convo-menu');
+    if (m) m.style.display = 'none';
+  }
+
+  function openConvMenu($btn) {
+    var convId = String($btn.data('conv-id'));
+    var pinned = String($btn.data('pinned')) === '1';
+    var menu = document.getElementById('cs-convo-menu');
+    if (!menu) {
+      menu = document.createElement('div');
+      menu.id = 'cs-convo-menu';
+      menu.className = 'cs-convo-menu';
+      (document.getElementById('chat-root') || document.body).appendChild(menu);
+    }
+    menu.innerHTML = '<button type="button" class="cs-convo-menu-item" data-act="pin">'
+      + '<span class="fa fa-thumb-tack"></span><span>'
+      + (pinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại') + '</span></button>';
+    menu.setAttribute('data-conv-id', convId);
+    menu.setAttribute('data-pinned', pinned ? '1' : '0');
+    menu.style.display = 'block';
+    var rect = $btn[0].getBoundingClientRect();
+    var mw   = menu.offsetWidth || 180;
+    var left = rect.right - mw;
+    if (left < 8) left = 8;
+    menu.style.top  = (rect.bottom + 4) + 'px';
+    menu.style.left = left + 'px';
+  }
+
+  $(document).on('click', '.convo-menu[data-conv-menu]', function(e) {
+    e.stopPropagation();
+    var menu   = document.getElementById('cs-convo-menu');
+    var isOpen = menu && menu.style.display === 'block'
+                 && menu.getAttribute('data-conv-id') === String($(this).data('conv-id'));
+    closeConvMenu();
+    if (!isOpen) openConvMenu($(this));
+  });
+
+  $(document).on('click', '#cs-convo-menu .cs-convo-menu-item', function(e) {
+    e.stopPropagation();
+    var menu = document.getElementById('cs-convo-menu');
+    if (!menu) return;
+    if ($(this).data('act') === 'pin') {
+      pinConv(menu.getAttribute('data-conv-id'), menu.getAttribute('data-pinned') === '1' ? '0' : '1');
+    }
+    closeConvMenu();
+  });
+
+  $(document).on('click', closeConvMenu);
+
   // ── Conversation selection ────────────────────────────────────────────
 
   $(document).on('click', '.convo-item[data-conv-id]', function() {
@@ -469,7 +533,8 @@
       var words = m.name.trim().split(/\s+/);
       var initl = (words[words.length - 1][0] || '?').toUpperCase();
       html += '<span class="emp-chip">'
-            + '<span class="av" style="background:hsl(' + m.hue + ',55%,52%)">' + initl + '</span>'
+            + '<span class="av" style="background:hsl(' + m.hue + ',55%,52%)">'
+            + (m.img ? '<img class="av-img" onerror="this.remove()" src="' + escHtml(m.img) + '">' : '') + initl + '</span>'
             + escHtml(m.name)
             + '<span class="x" data-chip-id="' + ausId + '">×</span>'
             + '</span>';
@@ -531,6 +596,7 @@
     var ausId = String($item.data('aus-id'));
     var name  = String($item.data('name') || '');
     var hue   = String($item.data('hue')  || '0');
+    var img   = String($item.data('img')  || '');
 
     if ($item.hasClass('selected')) {
       $item.removeClass('selected');
@@ -541,7 +607,7 @@
         selectedMembers = {};
       }
       $item.addClass('selected');
-      selectedMembers[ausId] = { name: name, hue: hue };
+      selectedMembers[ausId] = { name: name, hue: hue, img: img };
     }
     renderChips();
   });

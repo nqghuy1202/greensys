@@ -87,6 +87,7 @@
 .convo-avatar .presence { position:absolute; bottom:0; right:0; width:11px; height:11px; border-radius:999px; background:var(--online); box-shadow:0 0 0 2px var(--surface); }
 .convo-avatar .presence.away    { background:var(--away); }
 .convo-avatar .presence.offline { background:var(--text-4); }
+.convo-avatar>.av-img,.member-avatar>.av-img,.member-chip-avatar>.av-img,.chat-head-avatar>.av-img,.msg-avatar>.av-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit;}
 .convo-sender-badge { position:absolute; bottom:-3px; right:-3px; width:20px; height:20px; border-radius:999px; border:2px solid var(--surface); display:grid; place-items:center; color:white; font-size:9px; font-weight:700; z-index:1; }
 .convo-item.active .convo-sender-badge { border-color:var(--primary-50); }
 .convo-content { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; justify-content:center; }
@@ -108,7 +109,7 @@
 #doc-chat-root .convo-new-btn:hover { background:var(--primary-600); }
 .chat-pane { display:flex; flex-direction:column; min-height:0; background:var(--surface-2); overflow:hidden; }
 .chat-head { padding:10px 16px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; min-height:56px; flex-shrink:0; }
-.chat-head-avatar { width:36px; height:36px; border-radius:var(--r-full); flex-shrink:0; display:grid; place-items:center; color:white; font-weight:600; font-size:13px; }
+.chat-head-avatar { width:36px; height:36px; border-radius:var(--r-full); flex-shrink:0; display:grid; place-items:center; color:white; font-weight:600; font-size:13px; position:relative; }
 .chat-head-avatar.group { background: var(--primary-color, #15674C); }
 .chat-head-info    { display:flex; flex-direction:column; gap:1px; flex:1; min-width:0; }
 .chat-head-title   { font-size:14px; font-weight:600; color:var(--text-1); display:flex; align-items:center; gap:8px; }
@@ -124,7 +125,7 @@
 .msg-row { display:flex; gap:10px; padding:2px 16px; position:relative; }
 .msg-row:hover { background: color-mix(in srgb, var(--primary-color, #15674C) 4%, transparent); }
 .msg-row.mine  { flex-direction:row-reverse; }
-.msg-avatar { width:32px; height:32px; border-radius:999px; flex-shrink:0; display:grid; place-items:center; color:white; font-weight:600; font-size:12px; }
+.msg-avatar { width:32px; height:32px; border-radius:999px; flex-shrink:0; display:grid; place-items:center; color:white; font-weight:600; font-size:12px; position:relative; }
 .msg-avatar.hidden { visibility:hidden; }
 .msg-col { display:flex; flex-direction:column; max-width:62%; min-width:0; gap:4px; }
 .msg-row.mine .msg-col { align-items:flex-end; }
@@ -227,7 +228,7 @@
 .dc-create-context { background:var(--primary-50); border:1px solid var(--primary-100); border-radius:var(--r-md); padding:8px 12px; font-size:12px; color:var(--primary-700); display:flex; align-items:center; gap:8px; }
 .member-pick { display:flex; flex-wrap:wrap; gap:6px; padding:6px; min-height:42px; border:1px solid var(--border); border-radius:var(--r-sm); background:var(--surface); align-content:flex-start; }
 .member-chip { display:inline-flex; align-items:center; gap:5px; padding:3px 4px 3px 3px; background:var(--primary-50); border:1px solid var(--primary-100); border-radius:var(--r-full); font-size:12px; color:var(--primary-700); font-weight:500; }
-.member-chip-avatar { width:18px; height:18px; border-radius:999px; display:grid; place-items:center; color:white; font-size:9px; font-weight:700; }
+.member-chip-avatar { width:18px; height:18px; border-radius:999px; position:relative; display:grid; place-items:center; color:white; font-size:9px; font-weight:700; }
 .member-chip .x { width:16px; height:16px; display:grid; place-items:center; border-radius:999px; cursor:pointer; font-size:12px; color:var(--primary-600); line-height:1; }
 .member-chip .x:hover { background: color-mix(in srgb, var(--primary-color, #15674C) 15%, transparent); }
 .dc-checkbox { width:18px; height:18px; border-radius:4px; flex-shrink:0; border:1.5px solid var(--border-strong); background:var(--surface); display:grid; place-items:center; transition:background .12s,border-color .12s; }

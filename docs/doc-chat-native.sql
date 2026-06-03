@@ -218,6 +218,12 @@ BEGIN
                 JOIN EMPLOYEES e2 ON e2.emp_id = u2.emp_id
                 WHERE p2.conv_id = c.conv_id AND p2.aus_id != l_aus_id
                 FETCH FIRST 1 ROW ONLY) AS display_name,
+               (SELECT vf.v_file_name
+                FROM CHAT_PARTICIPANTS p2
+                JOIN APP_USERS u2 ON u2.aus_id = p2.aus_id
+                JOIN v_employees_v6 vf ON vf.emp_id = u2.emp_id
+                WHERE p2.conv_id = c.conv_id AND p2.aus_id != l_aus_id
+                FETCH FIRST 1 ROW ONLY) AS partner_img,
                c.last_msg_preview,
                CASE WHEN c.last_msg_date >= TRUNC(SYSDATE) THEN TO_CHAR(c.last_msg_date,'HH24:MI')
                     ELSE TO_CHAR(c.last_msg_date,'DD/MM') END AS display_time,
@@ -261,8 +267,11 @@ BEGIN
           HTP.p('<div class="' || l_cls || '" data-conv-id="' || conv.conv_id
                 || '" data-partner-aus-id="' || NVL(conv.partner_aus_id,'') || '">');
           HTP.p('  <div class="convo-avatar-wrap">');
-          HTP.p('    <div class="convo-avatar" style="background:hsl(' || l_hue || ',55%,52%)">'
-                || NVL(l_initl,'?') || '<span class="presence ' || l_presence || '"></span></div>');
+          HTP.p('    <div class="convo-avatar" style="background:hsl(' || l_hue || ',55%,52%)">');
+          IF conv.partner_img IS NOT NULL THEN
+            HTP.p('<img class="av-img" loading="lazy" onerror="this.remove()" src="' || HTF.ESCAPE_SC(conv.partner_img) || '">');
+          END IF;
+          HTP.p(NVL(l_initl,'?') || '<span class="presence ' || l_presence || '"></span></div>');
           HTP.p('  </div>');
           HTP.p('  <div class="convo-content">');
           HTP.p('    <div class="convo-row1">');
@@ -332,6 +341,7 @@ BEGIN
       SELECT /*+ MATERIALIZE */
         m.msg_id,
         m.from_aus_id,
+        u.emp_id,
         REGEXP_REPLACE(NVL(e.full_name,'Unknown'), '[[:cntrl:]]', '') AS from_name,
         CASE WHEN m.delete_date IS NOT NULL THEN NULL ELSE m.body END AS body,
         m.delete_date,
@@ -351,7 +361,9 @@ BEGIN
       ORDER  BY m.msg_id ASC
       FETCH FIRST 50 ROWS ONLY
     )
-    SELECT * FROM msg_raw
+    SELECT mr.*, vf.v_file_name AS img
+    FROM   msg_raw mr
+    LEFT JOIN v_employees_v6 vf ON vf.emp_id = mr.emp_id
   ) LOOP
     -- Date divider
     IF l_last_day IS NULL OR msg.msg_day > l_last_day THEN
@@ -375,8 +387,11 @@ BEGIN
       IF l_mine THEN
         HTP.p('  <div class="msg-avatar hidden"></div>');
       ELSE
-        HTP.p('  <div class="msg-avatar" style="background:hsl('
-              || MOD(msg.from_aus_id * 47, 360) || ',55%,52%)">' || l_av || '</div>');
+        HTP.p('  <div class="msg-avatar" style="background:hsl(' || MOD(msg.from_aus_id * 47, 360) || ',55%,52%)">');
+        IF msg.img IS NOT NULL THEN
+          HTP.p('<img class="av-img" loading="lazy" onerror="this.remove()" src="' || HTF.ESCAPE_SC(msg.img) || '">');
+        END IF;
+        HTP.p(l_av || '</div>');
       END IF;
 
       HTP.p('  <div class="msg-col">');
@@ -504,6 +519,7 @@ BEGIN
         SELECT /*+ MATERIALIZE */
           p.aus_id,
           p.is_admin,
+          u.emp_id,
           REGEXP_REPLACE(NVL(e.full_name,'Unknown'), '[[:cntrl:]]', '') AS full_name,
           REGEXP_REPLACE(NVL(d.dep_name,''),          '[[:cntrl:]]', '') AS dep_name
         FROM CHAT_PARTICIPANTS p
@@ -512,10 +528,11 @@ BEGIN
         LEFT JOIN DEPARTMENTS d ON d.dep_id = e.dep_id
         WHERE p.conv_id = l_conv_id
       )
-      SELECT r.aus_id, r.is_admin, r.full_name, r.dep_name,
+      SELECT r.aus_id, r.is_admin, r.full_name, r.dep_name, vf.v_file_name AS img,
              CASE WHEN o.last_seen >= l_online_cutoff THEN 'online' ELSE 'offline' END AS presence
       FROM members_raw r
       LEFT JOIN CHAT_USER_ONLINE o ON o.aus_id = r.aus_id
+      LEFT JOIN v_employees_v6 vf ON vf.emp_id = r.emp_id
       ORDER BY r.is_admin DESC, r.full_name
     ) LOOP
       l_count := l_count + 1;
@@ -526,6 +543,9 @@ BEGIN
       BEGIN
         HTP.p('<div class="member-row">');
         HTP.p('  <div class="member-avatar" style="background:hsl(' || l_hue || ',55%,52%)">');
+        IF mem.img IS NOT NULL THEN
+          HTP.p('    <img class="av-img" loading="lazy" onerror="this.remove()" src="' || HTF.ESCAPE_SC(mem.img) || '">');
+        END IF;
         HTP.p('    ' || NVL(l_av,'?'));
         HTP.p('    <span class="presence ' || mem.presence || '"></span>');
         HTP.p('  </div>');
@@ -629,6 +649,7 @@ BEGIN
       WITH users_raw AS (
         SELECT /*+ MATERIALIZE */
           u.aus_id,
+          u.emp_id,
           REGEXP_REPLACE(NVL(e.full_name,'Unknown'), '[[:cntrl:]]', '') AS full_name,
           REGEXP_REPLACE(NVL(d.dep_name,'Khác'),     '[[:cntrl:]]', '') AS dep_name
         FROM APP_USERS u
@@ -636,10 +657,11 @@ BEGIN
         LEFT JOIN DEPARTMENTS d ON d.dep_id = e.dep_id
         WHERE u.aus_id != l_aus_id
       )
-      SELECT r.aus_id, r.full_name, r.dep_name,
+      SELECT r.aus_id, r.full_name, r.dep_name, vf.v_file_name AS img,
              CASE WHEN o.last_seen >= l_online_cutoff THEN 'online' ELSE 'offline' END AS presence
       FROM   users_raw r
       LEFT JOIN CHAT_USER_ONLINE o ON o.aus_id = r.aus_id
+      LEFT JOIN v_employees_v6 vf ON vf.emp_id = r.emp_id
       ORDER  BY r.dep_name, r.full_name
     ) LOOP
       IF usr.dep_name <> l_prev_dep THEN
@@ -647,17 +669,22 @@ BEGIN
         l_prev_dep := usr.dep_name;
       END IF;
       DECLARE
-        l_av   VARCHAR2(4)   := UPPER(SUBSTR(REGEXP_SUBSTR(usr.full_name,'\S+$'),1,1));
-        l_hue  VARCHAR2(10)  := TO_CHAR(MOD(usr.aus_id * 47, 360));
-        l_name VARCHAR2(200) := HTF.ESCAPE_SC(usr.full_name);
-        l_dept VARCHAR2(200) := HTF.ESCAPE_SC(usr.dep_name);
+        l_av   VARCHAR2(4)    := UPPER(SUBSTR(REGEXP_SUBSTR(usr.full_name,'\S+$'),1,1));
+        l_hue  VARCHAR2(10)   := TO_CHAR(MOD(usr.aus_id * 47, 360));
+        l_name VARCHAR2(200)  := HTF.ESCAPE_SC(usr.full_name);
+        l_dept VARCHAR2(200)  := HTF.ESCAPE_SC(usr.dep_name);
+        l_img  VARCHAR2(1000) := usr.img;
       BEGIN
         HTP.p('<div class="member-suggest-item"');
         HTP.p('     data-aus-id="' || usr.aus_id || '"');
         HTP.p('     data-name="'   || REPLACE(l_name,'"','&quot;') || '"');
         HTP.p('     data-dept="'   || REPLACE(l_dept,'"','&quot;') || '"');
+        HTP.p('     data-img="'    || HTF.ESCAPE_SC(NVL(l_img,'')) || '"');
         HTP.p('     data-hue="'    || l_hue || '">');
         HTP.p('  <div class="member-avatar" style="width:32px;height:32px;font-size:12px;background:hsl(' || l_hue || ',55%,52%)">');
+        IF l_img IS NOT NULL THEN
+          HTP.p('    <img class="av-img" loading="lazy" onerror="this.remove()" src="' || HTF.ESCAPE_SC(l_img) || '">');
+        END IF;
         HTP.p('    ' || NVL(l_av,'?'));
         HTP.p('    <span class="presence ' || usr.presence || '"></span>');
         HTP.p('  </div>');

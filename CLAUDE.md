@@ -6,6 +6,15 @@ Node.js 22 middleware (Server B `172.25.10.38:3410`) bridging Oracle DB (Server 
 
 **Network rule:** Browser → Node.js communication **always** goes through `apex.server.process → APEX PL/SQL → UTL_HTTP`. Never propose direct browser → private IP connections.
 
+## Deployment model — read first
+
+Two machines, **no automated deploy** between them:
+- **This repo is the source you edit** (Windows dev box, `C:\nodejs-apex-oracle`). The `cd /opt/chat-server` commands below run **on Server B** (Linux) — `chat-server/` is copied there and run with pm2; do **not** expect pm2/npm to run against the live server from this box.
+- **Frontend + SQL are pasted into APEX by hand** — there is no migration tool:
+  - `docs/*.sql` PL/SQL → APEX **page-level Ajax Callbacks** (or Page 0 Application Processes for system-wide ones).
+  - `*-page.js` → page **"Execute when Page Loads"**; `*.css` → page **CSS → Inline** (~32KB limit).
+  - Editing a `.sql`/`.js`/`.css` here has **no effect until pasted into APEX**. Keep JS/CSS comments minimal — a past paste hit APEX's stored-source character limit.
+
 ## Server Commands
 
 ```bash
@@ -39,7 +48,7 @@ curl http://localhost:3410/api/events/<aus_id>   # unified long-poll test
 | Feature | Status | Details |
 |---------|--------|---------|
 | Notification (CQN + long-poll) | ✅ Done | `docs/claude/01-notification.md` |
-| Chat System v2 (`chat-system/`) | 🚧 Active | `docs/claude/02-chat-system.md`. **Đang chuyển JSX → native APEX** (vanilla JS + HTML callbacks, giống Doc Chat) — `docs/chat-system-native-plan.md` |
+| Chat System v2 (`chat-system/`) | 🚧 Active | `docs/claude/02-chat-system.md`. Native APEX is the live impl: vanilla `chat-page.js` + HTML callbacks `docs/chat-system-native.sql` (9 page-level callbacks); `*.jsx` is legacy. Plan: `docs/chat-system-native-plan.md` |
 | Doc Chat Modal (page 10022710201) | 🚧 Active | `docs/claude/03-doc-chat.md` — native APEX, filter tabs done (2026-06-01) |
 | CRM Module (KHTN) | 📋 Planned | `docs/claude/06-crm.md` |
 

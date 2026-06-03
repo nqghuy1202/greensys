@@ -121,12 +121,11 @@ _archive/chat-system-jsx/
             </div>
           </div>
         </div>
-        <!-- Quick chips -->
+        <!-- Quick chips. @Tôi tạm ẩn — chưa có model mention (xem chat-system-native.sql). -->
         <span class="lp-quick-chip" data-quick="unread">Chưa đọc</span>
         <span class="lp-quick-chip" data-quick="pinned">
           <span class="fa fa-thumb-tack" style="font-size:10px"></span> Ghim
         </span>
-        <span class="lp-quick-chip" data-quick="mention">@Tôi</span>
       </div>
 
       <div id="cs-conv-list"><div class="cs-loading">Đang tải...</div></div>

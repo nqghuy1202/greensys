@@ -422,7 +422,8 @@
       var m     = selectedMembers[ausId];
       var initl = m.name.trim().split(/\s+/).slice(-1)[0][0].toUpperCase();
       html += '<span class="member-chip">'
-            + '<span class="member-chip-avatar" style="background:hsl(' + m.hue + ',55%,52%)">' + initl + '</span>'
+            + '<span class="member-chip-avatar" style="background:hsl(' + m.hue + ',55%,52%)">'
+            + (m.img ? '<img class="av-img" onerror="this.remove()" src="' + escHtml(m.img) + '">' : '') + initl + '</span>'
             + escHtml(m.name.split(/\s+/).slice(-1)[0])
             + '<span class="x" data-chip-id="' + ausId + '">×</span>'
             + '</span>';
@@ -435,6 +436,7 @@
     var ausId    = String($item.data('aus-id'));
     var name     = String($item.data('name') || '');
     var hue      = String($item.data('hue')  || '0');
+    var img      = String($item.data('img')  || '');
     var convType = $('input[name="dc-conv-type"]:checked').val() || 'DM';
 
     if ($item.hasClass('selected')) {
@@ -447,7 +449,7 @@
         selectedMembers = {};
       }
       $item.addClass('selected');
-      selectedMembers[ausId] = { name: name, hue: hue };
+      selectedMembers[ausId] = { name: name, hue: hue, img: img };
     }
     renderChips();
   }
