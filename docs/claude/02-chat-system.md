@@ -2,6 +2,13 @@
 
 Full-page chat UI. Source: `chat-system/`. APEX page type: **Normal** (not Modal).
 
+> **Deployment (canonical since 2026-06-04): FGVD + Dynamic Action.** Frontend JS is split to dodge
+> APEX's ~32KB per-attribute limit — paste `chat-system/chat-page.fgvd.js` into **Function and Global
+> Variable Declaration**, `chat-page.onload.js` (just `window.csInit()`) into **Execute when Page
+> Loads**, and create the **22 Dynamic Actions** in `docs/chat-system-da-setup.md` (each a one-liner
+> calling `window.csOn*`). `chat-page.js` is whole-file reference only. The JSX load-order / React /
+> `loadLibsSeq` notes below are **legacy** (pre-native). See [[project-fgvd-da-deployment]].
+
 ## Backend (`chat-server/chat.js`)
 
 - Express router mounted at `/api/chat` in `server.js`

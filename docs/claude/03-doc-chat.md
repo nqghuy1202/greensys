@@ -190,20 +190,18 @@ apex.navigation.dialog(url, {
 }, null, triggerEl);
 ```
 
-## Function and Global Variable Declaration (APEX Page 10022710201)
+## Deployment: FGVD + Dynamic Action (canonical từ 2026-06-04)
 
-```javascript
-var pageId = $v('pFlowStepId');
-```
+JS được tách 3 chỗ để né giới hạn ~32KB/attribute. Thay cho việc paste cả `doc-chat-page.js` vào
+"Execute when Page Loads":
 
-## Execute when Page Loads (APEX Page 10022710201)
+- **Function and Global Variable Declaration** ← paste toàn bộ `doc-chat/doc-chat-page.fgvd.js`
+  (đã chứa `window.CHAT_AUS_ID = &G_AUS_ID.;` + `var pageId = $v('pFlowStepId');` ở đầu file, toàn
+  bộ state/hàm, expose `window.dcOn*`, và 2 binding giữ lại: `apex:chatEvent` + `unload`).
+- **Execute when Page Loads** ← `doc-chat/doc-chat-page.onload.js` (chỉ `window.dcInit();`).
+- **19 Dynamic Action** ← bảng trong `docs/doc-chat-da-setup.md` (mỗi DA gọi `window.dcOn*`).
 
-```javascript
-window.CHAT_AUS_ID = &G_AUS_ID.;
-
-// Paste nội dung doc-chat/doc-chat-page.js ở đây
-// (không cần loadLibsSeq/loadJSXSeq nữa — không còn JSX)
-```
+`doc-chat-page.js` (cả file) chỉ còn là tham chiếu. Xem [[project-fgvd-da-deployment]].
 
 ## APEX Migration Checklist
 
