@@ -63,7 +63,15 @@ BEGIN
             AND m.msg_id > NVL(p.last_read_msg_id, 0)) > 0)
       AND (l_search IS NULL
            OR LOWER(NVL(c.name,'')) LIKE '%' || l_search || '%'
-           OR LOWER(NVL(c.last_msg_preview,'')) LIKE '%' || l_search || '%');
+           OR LOWER(NVL(c.last_msg_preview,'')) LIKE '%' || l_search || '%'
+           OR EXISTS (
+                SELECT 1 FROM CHAT_PARTICIPANTS ps
+                JOIN   APP_USERS  us ON us.aus_id = ps.aus_id
+                JOIN   EMPLOYEES  es ON es.emp_id = us.emp_id
+                WHERE  ps.conv_id = c.conv_id
+                  AND  ps.aus_id != l_aus_id
+                  AND (LOWER(NVL(es.full_name,'')) LIKE '%' || l_search || '%'
+                    OR LOWER(NVL(us.user_name,'')) LIKE '%' || l_search || '%')));
   END IF;
 
   IF l_filter IN ('ALL', 'UNREAD') THEN
@@ -76,7 +84,15 @@ BEGIN
             WHERE m.conv_id = c.conv_id AND m.delete_date IS NULL
             AND m.msg_id > NVL(p.last_read_msg_id, 0)) > 0)
       AND (l_search IS NULL
-           OR LOWER(NVL(c.last_msg_preview,'')) LIKE '%' || l_search || '%');
+           OR LOWER(NVL(c.last_msg_preview,'')) LIKE '%' || l_search || '%'
+           OR EXISTS (
+                SELECT 1 FROM CHAT_PARTICIPANTS ps
+                JOIN   APP_USERS  us ON us.aus_id = ps.aus_id
+                JOIN   EMPLOYEES  es ON es.emp_id = us.emp_id
+                WHERE  ps.conv_id = c.conv_id
+                  AND  ps.aus_id != l_aus_id
+                  AND (LOWER(NVL(es.full_name,'')) LIKE '%' || l_search || '%'
+                    OR LOWER(NVL(us.user_name,'')) LIKE '%' || l_search || '%')));
   END IF;
 
   -- Total count (always ALL, no filter) for the badge on "Tất cả"
@@ -149,6 +165,13 @@ BEGIN
                 JOIN EMPLOYEES e3 ON e3.emp_id = u3.emp_id
                 WHERE m3.conv_id = c.conv_id AND m3.delete_date IS NULL
                 ORDER BY m3.msg_id DESC FETCH FIRST 1 ROW ONLY) AS last_sender_word,
+               -- ảnh avatar người gửi tin cuối (mini-badge) — nguồn v_employees_v6.v_file_name
+               (SELECT vf.v_file_name
+                FROM CHAT_MESSENGERS m4
+                JOIN APP_USERS u4 ON u4.aus_id = m4.from_aus_id
+                JOIN v_employees_v6 vf ON vf.emp_id = u4.emp_id
+                WHERE m4.conv_id = c.conv_id AND m4.delete_date IS NULL
+                ORDER BY m4.msg_id DESC FETCH FIRST 1 ROW ONLY) AS last_sender_img,
                (SELECT COUNT(*) FROM CHAT_MESSENGERS m
                 WHERE m.conv_id = c.conv_id AND m.delete_date IS NULL
                 AND m.msg_id > NVL(p.last_read_msg_id, 0)) AS unread_count
@@ -161,7 +184,15 @@ BEGIN
                 AND m.msg_id > NVL(p.last_read_msg_id, 0)) > 0)
           AND (l_search IS NULL
                OR LOWER(NVL(c.name,'')) LIKE '%' || l_search || '%'
-               OR LOWER(NVL(c.last_msg_preview,'')) LIKE '%' || l_search || '%')
+               OR LOWER(NVL(c.last_msg_preview,'')) LIKE '%' || l_search || '%'
+               OR EXISTS (
+                    SELECT 1 FROM CHAT_PARTICIPANTS ps
+                    JOIN   APP_USERS  us ON us.aus_id = ps.aus_id
+                    JOIN   EMPLOYEES  es ON es.emp_id = us.emp_id
+                    WHERE  ps.conv_id = c.conv_id
+                      AND  ps.aus_id != l_aus_id
+                      AND (LOWER(NVL(es.full_name,'')) LIKE '%' || l_search || '%'
+                        OR LOWER(NVL(us.user_name,'')) LIKE '%' || l_search || '%')))
         ORDER BY c.last_msg_date DESC NULLS LAST
       ) LOOP
         DECLARE
@@ -182,7 +213,12 @@ BEGIN
           -- Mini-badge: avatar người gửi tin cuối (bottom-right của group icon)
           IF conv.last_sender_aus_id IS NOT NULL THEN
             HTP.p('    <div class="convo-sender-badge" style="background:hsl('
-                  || l_badge_hue || ',55%,52%)">' || l_badge_initl || '</div>');
+                  || l_badge_hue || ',55%,52%)">');
+            IF conv.last_sender_img IS NOT NULL THEN
+              HTP.p('<img class="av-img" loading="lazy" onerror="this.remove()" src="'
+                    || HTF.ESCAPE_SC(conv.last_sender_img) || '">');
+            END IF;
+            HTP.p(l_badge_initl || '</div>');
           END IF;
           HTP.p('  </div>');
           HTP.p('  <div class="convo-content">');
@@ -242,7 +278,15 @@ BEGIN
                 WHERE m.conv_id = c.conv_id AND m.delete_date IS NULL
                 AND m.msg_id > NVL(p.last_read_msg_id, 0)) > 0)
           AND (l_search IS NULL
-               OR LOWER(NVL(c.last_msg_preview,'')) LIKE '%' || l_search || '%')
+               OR LOWER(NVL(c.last_msg_preview,'')) LIKE '%' || l_search || '%'
+               OR EXISTS (
+                    SELECT 1 FROM CHAT_PARTICIPANTS ps
+                    JOIN   APP_USERS  us ON us.aus_id = ps.aus_id
+                    JOIN   EMPLOYEES  es ON es.emp_id = us.emp_id
+                    WHERE  ps.conv_id = c.conv_id
+                      AND  ps.aus_id != l_aus_id
+                      AND (LOWER(NVL(es.full_name,'')) LIKE '%' || l_search || '%'
+                        OR LOWER(NVL(us.user_name,'')) LIKE '%' || l_search || '%')))
         ORDER BY c.last_msg_date DESC NULLS LAST
       ) LOOP
         DECLARE

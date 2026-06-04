@@ -1,125 +1,160 @@
-# Phase 0 Runbook — Dựng hạ tầng WSS/TLS (Nhánh A — Server B only)
+# Phase 0 Runbook — Dựng hạ tầng TLS/SSE (nginx có sẵn — Server B only)
 
-> **Ràng buộc đã chốt:** toàn bộ trên Server B. KHÔNG đụng OS/proxy Server A → **Nhánh A** (Caddy + domain riêng cho Node). Sửa APEX qua Builder vẫn được (Phase 2).
-> Các lệnh dưới chạy **trên Server B (Linux, 172.25.10.38)**. Dev box Windows không chạy được phần này.
+> **Tên file giữ `ws-migration-*` vì lý do lịch sử.** Transport đã chốt là **SSE** (xem `ws-migration-plan.md`).
+> **Ràng buộc:** toàn bộ trên Server B. KHÔNG đụng OS/proxy Server A. Sửa APEX qua Builder vẫn được (Phase 2).
+> **Hạ tầng đã khảo sát (2026-06-04):** Oracle Linux 8.10 · IP public `103.109.xx.xx` · nginx **đã cài sẵn, rảnh** (có `http_ssl_module` + `http_v2_module`, config chỉ default stock) · certbot **chưa** cài · firewall mở 1521/5432/2410/3410/3141, **chưa** mở 80/443.
+> Các lệnh chạy **trên Server B (Oracle Linux 8, 172.25.10.38 / public 103.109.xx.xx)**. Dev box Windows không chạy phần này.
 
----
-
-## Bước 0.1 — Chuẩn bị domain + DNS cho Node (Server B)
-
-Cần 1 domain/subdomain trỏ về IP public Server B. Port 3410 đã public ⇒ Server B có IP public, mở thêm 80/443 được.
-
-Lấy IP public Server B:
-```bash
-curl -s ifconfig.me ; echo
-```
-
-Chọn 1 trong các cách có domain (theo tư vấn ở phần dưới hội thoại):
-- **Subdomain của greensys.vn** (nếu kiểm soát được DNS greensys.vn — đây là thay đổi ở nhà cung cấp DNS, KHÔNG phải Server A): thêm A-record `chat.greensys.vn → <IP public Server B>`.
-- **Domain rẻ mới** (Cloudflare Registrar/Namecheap ~vài $/năm): A-record về IP Server B.
-- **DuckDNS (miễn phí)**: tạo `xxx.duckdns.org → IP Server B` (chỉ nên dùng nội bộ/thử nghiệm).
-
-Kiểm DNS đã trỏ đúng:
-```bash
-dig +short <domain-da-chon>      # phải ra IP public Server B
-```
-Mở firewall 80/443 (Let's Encrypt HTTP-01 cần 80):
-```bash
-sudo ufw allow 80,443/tcp 2>/dev/null || sudo firewall-cmd --add-service=http --add-service=https --permanent && sudo firewall-cmd --reload
-```
-
-→ Ghi domain đã chốt vào mục "Kết quả" cuối file.
+> **Quy ước biến:** đặt 1 lần rồi dùng lại — khi domain được chốt chỉ sửa dòng này:
+> ```bash
+> SSE_HOST="chat.greensys.vn"     # ⚠ CHỜ XÁC NHẬN — khả năng subdomain do người phụ trách server cấp
+> SERVER_B_IP="103.109.xx.xx"     # IP public Server B (curl ifconfig.me)
+> ```
 
 ---
 
-## Bước 0.2 — Kiểm tra reachability Node hiện tại
+## Bước 0.1 — Domain + DNS (GATE — chưa làm bước sau khi chưa xong)
 
-Trên Server B (local):
+Cần 1 A-record `SSE_HOST → SERVER_B_IP`. Đang chờ người phụ trách server (khả năng subdomain `greensys.vn`).
+
+**Yêu cầu gửi người quản DNS:** thêm 1 bản ghi:
+- Type `A` · Host `chat` (→ `chat.greensys.vn`) · trỏ về `103.109.xx.xx` · TTL mặc định
+- Nếu DNS ở Cloudflare: để **DNS only** (không bật proxy cam) — để certbot lấy cert trực tiếp.
+- Không ảnh hưởng bản ghi `erp.greensys.vn`; không cần đụng Server A; cert do Server B tự lo.
+
+Kiểm DNS đã trỏ đúng (chạy tới khi khớp mới đi tiếp):
 ```bash
-curl -s http://localhost:3410/health
+dig +short "$SSE_HOST"        # phải ra đúng 103.109.xx.xx
 ```
-Từ ngoài internet (máy bất kỳ) — port 3410 "public" đang là HTTP hay HTTPS:
-```bash
-curl -v http://<public-host>:3410/health     # HTTP thô?
-curl -v https://<public-host>:3410/health    # đã có TLS chưa?
-```
-Ghi lại: public host là **domain** hay **IP trần**? (TLS Let's Encrypt cần domain; IP trần chỉ Cloudflare cấp được.)
 
 ---
 
-## Bước 0.3 — Dựng Nhánh A (Caddy trước Node, domain riêng) — ĐÃ CHỐT
+## Bước 0.2 — Mở firewall 80/443 (firewalld)
 
-Yêu cầu: có domain (vd `chat.greensys.vn`) trỏ A-record về IP public của Server B; mở 80+443 vào Server B.
-
-Cài Caddy (Debian/Ubuntu):
+Let's Encrypt HTTP-01 cần 80; SSE/TLS chạy trên 443.
 ```bash
-sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
-sudo apt update && sudo apt install -y caddy
+sudo firewall-cmd --add-service=http --add-service=https --permanent
+sudo firewall-cmd --reload
+sudo firewall-cmd --list-services        # xác nhận có http https
 ```
 
-`/etc/caddy/Caddyfile`:
+---
+
+## Bước 0.3 — Cài certbot (plugin nginx) trên Oracle Linux 8
+
+```bash
+sudo dnf install -y epel-release
+sudo dnf install -y certbot python3-certbot-nginx
+certbot --version
 ```
-chat.greensys.vn {
-    reverse_proxy localhost:3410
-    # Caddy tự xin Let's Encrypt và tự xử lý header Upgrade của WebSocket.
+
+> Nếu `epel-release` không có: `sudo dnf config-manager --set-enabled ol8_developer_EPEL` (tên repo có thể khác theo channel OL8).
+
+---
+
+## Bước 0.4 — Thêm server block nginx cho SSE
+
+Tạo file mới (không đụng default stock). nginx hiện include `/etc/nginx/conf.d/*.conf`.
+
+`/etc/nginx/conf.d/chat-sse.conf` (HTTP tạm — certbot sẽ tự thêm phần TLS/redirect):
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name chat.greensys.vn;      # ⚠ đổi theo SSE_HOST đã chốt
+
+    # health đi thẳng Node
+    location /health {
+        proxy_pass http://127.0.0.1:3410;
+    }
+
+    # endpoint SSE — directive đặc thù, BẮT BUỘC đúng
+    location /api/sse {
+        proxy_pass            http://127.0.0.1:3410;
+        proxy_http_version    1.1;
+        proxy_set_header      Host $host;
+        proxy_set_header      X-Real-IP $remote_addr;
+        proxy_set_header      X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header      X-Forwarded-Proto $scheme;
+
+        proxy_buffering       off;     # ⚠ thiếu cái này SSE KHÔNG flush — lỗi phổ biến nhất
+        proxy_cache           off;
+        chunked_transfer_encoding off;
+        proxy_read_timeout    3600s;   # giữ stream lâu
+        proxy_send_timeout    3600s;
+    }
 }
 ```
+Kiểm cú pháp + reload:
 ```bash
-sudo systemctl reload caddy
-sudo systemctl status caddy --no-pager
+sudo nginx -t && sudo systemctl reload nginx
 ```
-Endpoint client (ghi vào global.js sau): `wss://chat.greensys.vn/ws`
-→ Node phải bật **CORS** cho origin `https://erp.greensys.vn:8211` + verify `Origin` lúc handshake (làm ở Phase 1). Path WS chốt = `/ws`.
+
+> **Không log token:** sau khi chạy, cân nhắc tắt log query-string cho `/api/sse` (token nằm ở query). Có thể đặt `access_log off;` trong block `location /api/sse` hoặc dùng log_format ẩn query.
 
 ---
 
-## Bước 0.4 — Verify acceptance (sau khi dựng A hoặc B)
+## Bước 0.5 — Xin cert Let's Encrypt (certbot tự sửa nginx)
 
-Cài công cụ test WS:
 ```bash
-# websocat (khuyến nghị, 1 binary)
-curl -L https://github.com/vi/websocat/releases/latest/download/websocat.x86_64-unknown-linux-musl -o /usr/local/bin/websocat && chmod +x /usr/local/bin/websocat
-# hoặc: npm i -g wscat
+sudo certbot --nginx -d chat.greensys.vn       # ⚠ đổi theo SSE_HOST
+```
+certbot sẽ: lấy cert qua HTTP-01, **tự thêm `listen 443 ssl`** vào block trên, và thường thêm redirect 80→443. Sau đó **bật HTTP/2 thủ công** (gỡ giới hạn 6 kết nối/domain — quan trọng cho SSE đa tab):
+```bash
+# Trong block listen 443 ssl mà certbot tạo, thêm 'http2 on;' (cú pháp nginx >=1.25),
+# hoặc sửa thành 'listen 443 ssl http2;' (cú pháp cũ). Kiểm phiên bản:
+nginx -v
+sudo nginx -t && sudo systemctl reload nginx
+```
+Tự gia hạn cert:
+```bash
+systemctl status certbot-renew.timer --no-pager 2>/dev/null || systemctl list-timers | grep certbot
+sudo certbot renew --dry-run
 ```
 
-1) Health qua TLS:
-```bash
-curl -v https://<endpoint-host>/health          # nhánh A: chat.greensys.vn ; nhánh B: erp.greensys.vn
-```
-Kỳ vọng: `HTTP/2 200` hoặc `HTTP/1.1 200`, cert hợp lệ (không `-k`).
+---
 
-2) Handshake WS (lúc này Node CHƯA có endpoint /ws → chỉ kiểm tới tầng proxy; bước này lặp lại sau Phase 1):
-```bash
-websocat -v "wss://<endpoint-host>/<path>"      # A: chat.greensys.vn/ws ; B: erp.greensys.vn/chat-ws
-```
-Kỳ vọng (sau Phase 1): thấy `101 Switching Protocols`. Hiện tại (trước Phase 1) chấp nhận 404/426 từ Node miễn là KHÔNG phải lỗi TLS/Mixed Content ở tầng proxy.
+## Bước 0.6 — Verify acceptance
 
-3) Từ browser, mở DevTools Console trên 1 trang `https://erp.greensys.vn:8211/ords/r/...`:
+1) Health qua TLS hợp lệ:
+```bash
+curl -v "https://$SSE_HOST/health"      # kỳ vọng 200, cert hợp lệ, KHÔNG cần -k
+```
+
+2) Tới endpoint SSE (Phase 0: Node chưa có `/api/sse` → 401/404 là CHẤP NHẬN, miễn không lỗi TLS):
+```bash
+curl -N -v "https://$SSE_HOST/api/sse?token=test"
+```
+
+3) Từ browser, Console trên 1 trang `https://erp.greensys.vn:8211/ords/r/...`:
 ```js
-const ws = new WebSocket('wss://<endpoint-host>/<path>');
-ws.onopen  = () => console.log('OPEN', ws.readyState);
-ws.onerror = (e) => console.log('ERR', e);
-ws.onclose = (e) => console.log('CLOSE', e.code, e.reason);
+const es = new EventSource('https://chat.greensys.vn/api/sse?token=test'); // đổi theo SSE_HOST
+es.onopen  = () => console.log('OPEN', es.readyState);
+es.onerror = (e) => console.log('ERR/CLOSE', es.readyState);
 ```
-Kỳ vọng: KHÔNG có lỗi `Mixed Content`. Nhánh A: không lỗi CORS (sau khi Node bật CORS Phase 1). `OPEN`/`CLOSE` đều được, miễn không bị browser chặn vì scheme/TLS.
+Kỳ vọng: **KHÔNG** lỗi `Mixed Content`. ERR do Node chưa có `/api/sse` (401) là chấp nhận được ở Phase 0; OPEN sẽ đạt sau Phase 1.
 
 ---
 
 ## Acceptance Phase 0 (đánh dấu khi xong)
-- [x] Nhánh: **A** (Caddy + domain riêng, Server B only) — đã chốt.
-- [ ] Domain trỏ đúng IP public Server B (`dig` khớp).
-- [ ] Caddy chạy, `curl https://<domain>/health` → 200, TLS Let's Encrypt hợp lệ.
-- [ ] `new WebSocket('wss://<domain>/ws')` từ trang ORDS không bị Mixed Content (CLOSE do Node chưa có /ws là chấp nhận được ở Phase 0; OPEN sẽ đạt sau Phase 1).
-- [ ] Endpoint chốt cho `global.js`: `WS_URL = wss://________________/ws`
+- [x] Đường: **nginx có sẵn + certbot** (Server B only) — đã chốt (bỏ Caddy).
+- [ ] Domain `SSE_HOST` chốt + `dig` khớp `103.109.xx.xx`.
+- [ ] Firewall mở 80/443.
+- [ ] certbot cấp cert; `curl https://<SSE_HOST>/health` → 200 TLS hợp lệ.
+- [ ] `http2 on` đã bật trong block 443.
+- [ ] `new EventSource('https://<SSE_HOST>/api/sse')` từ trang ORDS không Mixed Content (401/404 do Node chưa có endpoint là OK).
+- [ ] Endpoint chốt cho `global.js`: `SSE_URL = https://________________/api/sse`
 
 ---
 
 ## Kết quả (điền vào đây rồi báo lại)
 
-- IP public Server B (`curl ifconfig.me`): ____________________
-- Domain đã chốt: ____________________
-- `dig <domain>` khớp IP Server B: ____ (Y/N)
-- Caddy status: ____________________
-- **Endpoint cuối: wss://____________________/ws**
+- IP public Server B (`curl ifconfig.me`): `103.109.xx.xx`
+- OS: Oracle Linux 8.10
+- nginx có sẵn: có (`http_ssl_module` + `http_v2_module`), config default stock
+- certbot: ____ (đã cài Y/N)
+- Domain đã chốt (`SSE_HOST`): ____________________
+- `dig <SSE_HOST>` khớp IP Server B: ____ (Y/N)
+- IP tĩnh hay động: ____________________
+- nginx `nginx -t` + reload OK: ____ (Y/N)
+- **Endpoint cuối: https://____________________/api/sse**

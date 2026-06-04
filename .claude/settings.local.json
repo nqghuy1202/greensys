@@ -54,7 +54,12 @@
       "Bash(cd /c/nodejs-apex-oracle/chat-system && grep -l \"Tạo nhóm\\\\|emp-modal\\\\|member-chip\\\\|Thành viên đã chọn\" *.html *.jsx 2>/dev/null)",
       "Bash(wc -l server.js events.js chat.js cqn.js)",
       "Bash(wc -l /c/nodejs-apex-oracle/chat-system/chat-page.js /c/nodejs-apex-oracle/doc-chat/doc-chat-page.js)",
-      "Bash(echo \"=== exit $? ===\")"
+      "Bash(echo \"=== exit $? ===\")",
+      "Bash(echo \"--- exit $? \\(1 = none found, good\\)\")",
+      "Bash(sed -n '165,215p' docs/chat-system-native.sql)",
+      "Bash(sed -n '165,205p' docs/doc-chat-native.sql)",
+      "Bash(sed -n '40,95p' docs/doc-chat-native.sql)",
+      "Bash(sed -n '245,262p' docs/doc-chat-native.sql)"
     ]
   },
   "enabledPlugins": {

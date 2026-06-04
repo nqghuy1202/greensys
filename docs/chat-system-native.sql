@@ -109,7 +109,14 @@ BEGIN
             JOIN   APP_USERS  u3 ON u3.aus_id = m3.from_aus_id
             JOIN   EMPLOYEES  e3 ON e3.emp_id = u3.emp_id
             WHERE  m3.conv_id = c.conv_id AND m3.delete_date IS NULL
-            ORDER BY m3.msg_id DESC FETCH FIRST 1 ROW ONLY) AS last_sender_word
+            ORDER BY m3.msg_id DESC FETCH FIRST 1 ROW ONLY) AS last_sender_word,
+           -- ảnh avatar người gửi tin cuối (mini-badge) — nguồn v_employees_v6.v_file_name
+           (SELECT vf.v_file_name
+            FROM   CHAT_MESSENGERS m4
+            JOIN   APP_USERS  u4 ON u4.aus_id = m4.from_aus_id
+            JOIN   v_employees_v6 vf ON vf.emp_id = u4.emp_id
+            WHERE  m4.conv_id = c.conv_id AND m4.delete_date IS NULL
+            ORDER BY m4.msg_id DESC FETCH FIRST 1 ROW ONLY) AS last_sender_img
     FROM CHAT_CONVERSATIONS c
     JOIN CHAT_PARTICIPANTS  p ON p.conv_id = c.conv_id AND p.aus_id = l_aus_id
     WHERE (
@@ -120,7 +127,16 @@ BEGIN
     )
     AND (l_search IS NULL
          OR LOWER(NVL(c.name,''))             LIKE '%' || l_search || '%'
-         OR LOWER(NVL(c.last_msg_preview,'')) LIKE '%' || l_search || '%')
+         OR LOWER(NVL(c.last_msg_preview,'')) LIKE '%' || l_search || '%'
+         -- khớp tên thành viên: phủ cả DM (tên partner) lẫn GROUP/CHANNEL (mọi thành viên)
+         OR EXISTS (
+              SELECT 1 FROM CHAT_PARTICIPANTS ps
+              JOIN   APP_USERS  us ON us.aus_id = ps.aus_id
+              JOIN   EMPLOYEES  es ON es.emp_id = us.emp_id
+              WHERE  ps.conv_id = c.conv_id
+                AND  ps.aus_id != l_aus_id
+                AND (LOWER(NVL(es.full_name,'')) LIKE '%' || l_search || '%'
+                  OR LOWER(NVL(us.user_name,'')) LIKE '%' || l_search || '%')))
     -- NVL(l_quick,'X') để khi KHÔNG bấm chip (l_quick NULL) điều kiện ra TRUE,
     -- tránh logic 3-trị NULL loại nhầm hội thoại đã đọc hết.
     AND (NVL(l_quick,'X') != 'UNREAD' OR
@@ -140,6 +156,7 @@ BEGIN
                                      || CASE WHEN l_pinned THEN ' pinned'  END;
       l_badge_hue   VARCHAR2(10)  := TO_CHAR(MOD(NVL(conv.last_sender_aus_id, 0) * 47, 360));
       l_badge_initl VARCHAR2(4)   := UPPER(SUBSTR(NVL(conv.last_sender_word,'?'), 1, 1));
+      l_badge_img   VARCHAR2(1000):= conv.last_sender_img;
       l_is_mine     BOOLEAN       := (conv.last_sender_aus_id = l_aus_id);
       l_sender_lbl  VARCHAR2(200);
       l_preview     VARCHAR2(300) := REGEXP_REPLACE(NVL(conv.last_msg_preview, ''), '[[:cntrl:]]', ' ');
@@ -180,13 +197,23 @@ BEGIN
         HTP.p('    <div class="convo-avatar doc"><span class="fa fa-file-text-o"></span></div>');
         IF conv.last_sender_aus_id IS NOT NULL THEN
           HTP.p('    <div class="convo-sender-badge" style="background:hsl('
-                || l_badge_hue || ',55%,52%)">' || l_badge_initl || '</div>');
+                || l_badge_hue || ',55%,52%)">');
+          IF l_badge_img IS NOT NULL THEN
+            HTP.p('<img class="av-img" loading="lazy" onerror="this.remove()" src="'
+                  || HTF.ESCAPE_SC(l_badge_img) || '">');
+          END IF;
+          HTP.p(l_badge_initl || '</div>');
         END IF;
       ELSE
         HTP.p('    <div class="convo-avatar group"><span class="fa fa-users"></span></div>');
         IF conv.last_sender_aus_id IS NOT NULL THEN
           HTP.p('    <div class="convo-sender-badge" style="background:hsl('
-                || l_badge_hue || ',55%,52%)">' || l_badge_initl || '</div>');
+                || l_badge_hue || ',55%,52%)">');
+          IF l_badge_img IS NOT NULL THEN
+            HTP.p('<img class="av-img" loading="lazy" onerror="this.remove()" src="'
+                  || HTF.ESCAPE_SC(l_badge_img) || '">');
+          END IF;
+          HTP.p(l_badge_initl || '</div>');
         END IF;
       END IF;
 
