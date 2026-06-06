@@ -59,7 +59,9 @@
       "Bash(sed -n '165,215p' docs/chat-system-native.sql)",
       "Bash(sed -n '165,205p' docs/doc-chat-native.sql)",
       "Bash(sed -n '40,95p' docs/doc-chat-native.sql)",
-      "Bash(sed -n '245,262p' docs/doc-chat-native.sql)"
+      "Bash(sed -n '245,262p' docs/doc-chat-native.sql)",
+      "Bash(start \"\" \"D:\\\\nodejs-apex-oracle\\\\chat-system\\\\kanban-demo.html\")",
+      "PowerShell(New-Item *)"
     ]
   },
   "enabledPlugins": {
