@@ -63,7 +63,8 @@
       "Bash(start \"\" \"D:\\\\nodejs-apex-oracle\\\\chat-system\\\\kanban-demo.html\")",
       "PowerShell(New-Item *)",
       "Bash(dir D:greensys *)",
-      "Bash(Test-Path *)"
+      "Bash(Test-Path *)",
+      "PowerShell(Head *)"
     ]
   },
   "enabledPlugins": {

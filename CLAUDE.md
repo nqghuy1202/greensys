@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # nodejs-apex-oracle
 
 Node.js 22 middleware (Server B `172.25.10.38:3410`) bridging Oracle DB (Server A) ↔ Oracle APEX 24.2 browser clients.
@@ -29,6 +33,8 @@ Server B — Node.js 22 (172.25.10.38:3410)
 | `chat-system/` | Messenger UI — APEX native, FGVD + 22 DA | `chat-system/CLAUDE.md` |
 | `doc-chat/` | Doc Chat Modal (page 10022710201) — FGVD + 19 DA | `doc-chat/CLAUDE.md` |
 | `sse-migration/` | SSE real-time upgrade — Phase 0 chờ DNS | `sse-migration/CLAUDE.md` |
+| `apex-claude-mcp/` | Vibe coding — kết nối Claude Code ↔ APEX 26 + Oracle DB | `apex-claude-mcp/CLAUDE.md` |
+| `apex-component-modifier/` | Skill gốc (fork từ avhrst) — tham khảo, chưa customize | `apex-component-modifier/CLAUDE.md` |
 
 ## Deployment model
 
@@ -39,9 +45,25 @@ Server B — Node.js 22 (172.25.10.38:3410)
 
 **APEX frontend split 3 chỗ** (né giới hạn ~32KB/attribute):
 - `*.fgvd.js` → **Function and Global Variable Declaration**
-- `*.onload.js` → **Execute when Page Loads**
+- `*.onload.js` → **Execute when Page Loads** (thường chỉ 1 dòng gọi `window.csInit()` / `window.dcInit()`)
 - Mỗi user action → **Dynamic Action** (one-liner gọi `window.csOn*` / `window.dcOn*`)
 - `*.css` → **Page → CSS → Inline**
+
+## Server B — Chat Server commands
+
+```bash
+pm2 start server.js --name chat-server --restart-delay 3000
+pm2 restart chat-server
+pm2 logs chat-server --lines 20
+pm2 status
+curl http://localhost:3410/health
+```
+
+**Test DB/CQN (chạy từ `chat-server/`):**
+```bash
+npm run test:connection    # safe khi server đang chạy
+npm run test:cqn           # dừng server trước (tranh CQN_PORT 3141)
+```
 
 ## Feature Status
 
@@ -78,3 +100,26 @@ Server B — Node.js 22 (172.25.10.38:3410)
 | `/bmad-investigate` | Trace bug, hiểu code lạ |
 | `/bmad-code-review` | Adversarial review |
 | `/apex-node-review` | Review flow/API consistency APEX↔Node |
+
+## Vibe Coding — apex-claude-mcp
+
+Dự án kết nối Claude Code trực tiếp với Oracle APEX 26 + Oracle DB 26 qua SQLcl + skill `/apex`.
+
+**Prerequisite:** VPN nội bộ kết nối, SQLcl 25.1+ cài trên máy dev, saved connection `APEX26`.
+
+```powershell
+# Test kết nối Oracle (sau khi join VPN)
+Test-NetConnection -ComputerName 172.25.10.38 -Port 1521
+
+# Kết nối SQLcl
+sql dev24@172.25.10.38:1521/orclpdb1
+```
+
+**Skill usage (sau khi setup xong):**
+```
+/apex PAGE:100 -- show structure
+/apex PAGE:100 -- thêm Classic Report danh sách user
+/sqlcl -- select count(*) from chat_messengers
+```
+
+Xem hướng dẫn đầy đủ: `apex-claude-mcp/docs/setup.md`
