@@ -23,7 +23,7 @@ Server B — Node.js 22 (172.25.10.38:3410)
 
 **Network rule:** Browser → Node.js **luôn** qua `apex.server.process → APEX PL/SQL → UTL_HTTP`. Không có direct browser → private IP.
 
-**Exception (Phase 0 đang chờ DNS):** `/api/sse` sẽ là kênh SSE trực tiếp `browser → nginx(443) → Node`. Chỉ áp dụng cho kênh NHẬN — action (`send/typing/read/heartbeat`) vẫn qua UTL_HTTP.
+**Exception SSE (đã live):** `/api/sse` là kênh SSE trực tiếp `browser → nginx(443) → Node`. Chỉ áp dụng cho kênh NHẬN — action (`send/typing/read/heartbeat`) vẫn qua UTL_HTTP.
 
 ## Sub-projects
 
@@ -69,10 +69,10 @@ npm run test:cqn           # dừng server trước (tranh CQN_PORT 3141)
 
 | Feature | Status |
 |---------|--------|
-| Notification (CQN + long-poll) | ✅ Done |
+| Notification (CQN + SSE) | ✅ Done |
 | Chat System / Messenger | 🚧 Active |
 | Doc Chat Modal (page 10022710201) | 🚧 Active |
-| SSE Migration (real-time) | 🚧 Phase 0 — chờ DNS |
+| SSE Migration (real-time) | ✅ Done — 4 phase hoàn thành 2026-06-09 |
 | Menu Tree IG (page 10012010203) | ✅ Done — `docs/menu-tree-ig-setup.md` |
 | CRM Module (KHTN) | 📋 Planned — `docs/crm.md` |
 

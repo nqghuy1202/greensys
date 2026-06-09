@@ -1,19 +1,18 @@
 'use strict';
 
-const POLL_TIMEOUT = 25_000;
-const BUFFER_MAX   = 100;       // tối đa event xếp hàng / user
-const BUFFER_TTL   = 60_000;    // event quá 60s coi như cũ → bỏ
+const BUFFER_MAX = 100;
+const BUFFER_TTL = 60_000;
 
-// Chỉ buffer event "durable" (cần nhận đủ). typing/typing_stop tự hết hạn ở client → không buffer.
+// Event types được buffer để replay khi SSE reconnect
 const BUFFERABLE = new Set(['message', 'read', 'notification']);
 
-// Unified event waiters: aus_id(string) → { res, timeout }
-// One active long-poll per user; new connection replaces the old one.
-const eventWaiters = new Map();
+// aus_id(string) → res  (1 SSE conn/user; conn mới đẩy conn cũ ra)
+const sseConnections = new Map();
 
-// Event đến khi KHÔNG có waiter (khoảng giữa resolve→re-poll, hoặc đang reconnect):
-// aus_id(string) → [{ payload, expiresAt }]. Poll kế tiếp rút từ đây → at-least-once.
-// Vá tính lossy của kênh cho chat (notification vẫn tự lành qua DB re-query).
+// seq tăng dần — gắn vào mỗi SSE event để client dùng Last-Event-ID replay
+let sseSeq = 0;
+
+// aus_id(string) → [{ seq, payload, expiresAt }]
 const eventBuffer = new Map();
 
 function pruneBuffer(key) {
@@ -27,79 +26,78 @@ function pruneBuffer(key) {
 }
 
 function bufferEvent(key, payload) {
+    const seq = ++sseSeq;
     let q = eventBuffer.get(key) || [];
-    // Gộp notification liên tiếp: chuông tự query lại DB nên 1 cái là đủ.
+    // Gộp notification liên tiếp — chuông tự query lại DB nên 1 cái là đủ
     if (payload.type === 'notification' &&
         q.length && q[q.length - 1].payload.type === 'notification') {
-        return;
+        return seq;
     }
-    q.push({ payload, expiresAt: Date.now() + BUFFER_TTL });
-    if (q.length > BUFFER_MAX) q = q.slice(q.length - BUFFER_MAX);  // giữ mới nhất
+    q.push({ seq, payload, expiresAt: Date.now() + BUFFER_TTL });
+    if (q.length > BUFFER_MAX) q = q.slice(q.length - BUFFER_MAX);
     eventBuffer.set(key, q);
+    return seq;
 }
 
-function addWaiter(ausId, req, res) {
+function sseWrite(res, seq, payload) {
+    try {
+        res.write(`id: ${seq}\ndata: ${JSON.stringify(payload)}\n\n`);
+    } catch (_) { /* conn đã đóng */ }
+}
+
+function registerSSE(ausId, res, lastEventId) {
     const key = String(ausId);
 
-    // Có event đang xếp hàng → trả ngay 1 cái, không đỗ waiter.
-    // global.js poll lại tức thì sau mỗi resolve nên hàng đợi được rút nhanh, từng cái một
-    // (giữ nguyên contract 1 payload/response — không phải đổi global.js).
-    const q = pruneBuffer(key);
-    if (q && q.length) {
-        const next = q.shift();
-        if (q.length) eventBuffer.set(key, q); else eventBuffer.delete(key);
-        res.json(next.payload);
-        return;
-    }
-
-    const old = eventWaiters.get(key);
+    // Đẩy conn cũ ra
+    const old = sseConnections.get(key);
     if (old) {
-        clearTimeout(old.timeout);
-        old.res.json({ type: 'replaced' });
+        try { old.write('event: replaced\ndata: {}\n\n'); old.end(); } catch (_) {}
+    }
+    sseConnections.set(key, res);
+
+    // Flush buffer từ lastEventId trở đi (replay sau reconnect)
+    const since = Number(lastEventId) || 0;
+    const q = pruneBuffer(key);
+    if (q) {
+        q.filter(e => e.seq > since).forEach(e => sseWrite(res, e.seq, e.payload));
     }
 
-    const timeout = setTimeout(() => {
-        eventWaiters.delete(key);
-        res.json({ type: 'timeout' });
-    }, POLL_TIMEOUT);
-
-    eventWaiters.set(key, { res, timeout });
-
-    req.on('close', () => {
-        const w = eventWaiters.get(key);
-        if (w && w.res === res) {
-            clearTimeout(w.timeout);
-            eventWaiters.delete(key);
-        }
+    res.on('close', () => {
+        if (sseConnections.get(key) === res) sseConnections.delete(key);
     });
 }
 
 function deliverToUser(ausId, payload) {
-    const key = String(ausId);
-    const w = eventWaiters.get(key);
-    if (!w) {
-        // Không có poll đang đỗ → xếp hàng thay vì bỏ (fix lossy). typing/* thì bỏ qua.
-        if (BUFFERABLE.has(payload.type)) bufferEvent(key, payload);
+    const key    = String(ausId);
+    const sseRes = sseConnections.get(key);
+
+    if (sseRes) {
+        const seq = ++sseSeq;
+        sseWrite(sseRes, seq, payload);
+        // Buffer để replay khi reconnect
+        if (BUFFERABLE.has(payload.type)) {
+            let q = eventBuffer.get(key) || [];
+            q.push({ seq, payload, expiresAt: Date.now() + BUFFER_TTL });
+            if (q.length > BUFFER_MAX) q = q.slice(q.length - BUFFER_MAX);
+            eventBuffer.set(key, q);
+        }
         return;
     }
-    clearTimeout(w.timeout);
-    w.res.json(payload);
-    eventWaiters.delete(key);
+
+    // Không có SSE conn đang mở — buffer để replay khi client reconnect
+    if (BUFFERABLE.has(payload.type)) bufferEvent(key, payload);
 }
 
-// Called by CQN when a new notification row is inserted/deleted
 function notifyUser(ausId) {
     deliverToUser(String(ausId), { type: 'notification' });
     console.log('[Events] notification → aus_id=%s', ausId);
 }
 
-// Drain all pending waiters on graceful shutdown
 function drainAll() {
-    for (const [, w] of eventWaiters) {
-        clearTimeout(w.timeout);
-        w.res.json({ type: 'timeout' });
+    for (const [, res] of sseConnections) {
+        try { res.write('event: close\ndata: {}\n\n'); res.end(); } catch (_) {}
     }
-    eventWaiters.clear();
+    sseConnections.clear();
 }
 
-module.exports = { addWaiter, deliverToUser, notifyUser, drainAll };
+module.exports = { deliverToUser, notifyUser, drainAll, registerSSE };

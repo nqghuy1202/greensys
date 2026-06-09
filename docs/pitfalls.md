@@ -1,5 +1,18 @@
 # Pitfalls & Gotchas
 
+## SSE / DBMS_CRYPTO
+
+### PLS-00512 — Cannot directly access remote package variable
+
+`DBMS_CRYPTO.HMAC_SH256` là package constant, không dùng trực tiếp được trong APEX Application Process. Dùng giá trị số thay thế:
+
+```sql
+-- Sai:
+typ => DBMS_CRYPTO.HMAC_SH256
+-- Đúng:
+typ => 2   -- DBMS_CRYPTO.HMAC_SH256 = 2
+```
+
 All known traps in this project. Check before coding.
 
 ## Oracle / PL/SQL

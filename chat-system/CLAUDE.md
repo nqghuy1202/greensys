@@ -1,86 +1,111 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Chat System — Messenger UI
 
-Full-page chat 3 cột (sidebar danh sách / thread / info panel). APEX page type: **Normal** (không phải Modal). Deploy bằng **FGVD + Dynamic Action** — không React, không JSX, không Static Files.
+Full-page chat 3 cột (sidebar / thread / info panel). APEX page type: **Normal**. Deploy bằng **FGVD + Dynamic Action** — không React, không JSX, không Static Files.
 
 ## Files
 
 ```
 chat-system/
-  chat-page.fgvd.js     ← ACTIVE: paste vào "Function and Global Variable Declaration"
-  chat-page.onload.js   ← ACTIVE: paste vào "Execute when Page Loads" (chỉ window.csInit())
-  chat-page.css         ← ACTIVE: paste vào Page → CSS → Inline
-  screenshots/          Ảnh chụp UI tham khảo
-  CLAUDE.md             ← file này
+  chat-page.fgvd.js     ← paste vào "Function and Global Variable Declaration"
+  chat-page.onload.js   ← paste vào "Execute when Page Loads" (chỉ window.csInit())
+  chat-page.css         ← paste vào Page → CSS → Inline
+  global.js             ← Theme global JS (SSE client + notification bell)
   docs/
-    da-setup.md         Bảng 22 Dynamic Actions + paste checklist
-    native.sql          8 page-level Ajax Callbacks (SQL đầy đủ)
-    native-plan.md      Kế hoạch chuyển từ JSX sang native (tham khảo)
-    callbacks-v2.sql    Callbacks thời JSX (legacy reference)
+    da-setup.md         Bảng 22 Dynamic Actions + checklist deploy
+    native.sql          9 page-level Ajax Callbacks SQL đầy đủ
+    page0-callbacks.sql 3 Page 0 / Application Process callbacks (sseToken, chatHeartbeat, notificationCount)
+    callbacks-v2.sql    Legacy JSX callbacks (tham khảo)
 ```
 
-## Deploy lên APEX — Quy trình 3 bước
+## Deploy lên APEX
 
-### Bước 1 — Function and Global Variable Declaration
-Paste toàn bộ `chat-page.fgvd.js`. File này chứa:
-- `var pageId = $v('pFlowStepId');` (bắt buộc đầu file)
-- Toàn bộ state + helper functions (trong IIFE)
-- Expose `window.csOn*` cho Dynamic Actions gọi
-- Binding `apex:chatEvent` và `unload` (giữ trong FGVD, không phải DA)
+### 1 — Function and Global Variable Declaration
+Paste toàn bộ `chat-page.fgvd.js`. **Quan trọng:** `window.CHAT_AUS_ID = &G_AUS_ID.` và `var pageId = $v('pFlowStepId')` phải nằm ở **đầu FGVD**, không phải Execute-on-load — IIFE đọc AUS_ID ngay khi FGVD chạy, trước Execute-on-load.
 
-### Bước 2 — Execute when Page Loads
-Paste `chat-page.onload.js` (chỉ 1 dòng: `window.csInit();`).
+### 2 — Execute when Page Loads
+Paste `chat-page.onload.js` (chỉ `window.csInit();`).
 
-### Bước 3 — Dynamic Actions (22 DA)
-Xem bảng đầy đủ trong `docs/da-setup.md`. Mỗi DA là:
-- Event: Custom, jQuery Selector hoặc Click
-- Fire on Init: No (trừ các DA init)
-- JS Code: một lớp gọi `window.csOn*()`
+### 3 — Dynamic Actions (22 DA)
+Xem bảng đầy đủ trong `docs/da-setup.md`. Quy ước bắt buộc cho **mọi DA**:
+- Selection Type: `jQuery Selector`, Event Scope: **`Dynamic`**, Static Container: `#chat-root`
+- `Dynamic` bắt buộc vì phần tử được render bằng `innerHTML` — Scope `Static` sẽ bỏ qua click trên phần tử mới tải
+- Fire on Initialization: `No`
+- Luôn truyền `this.triggeringElement` và `this.browserEvent` vào hàm
 
-### CSS
-Paste `chat-page.css` vào Page → CSS → Inline (giới hạn ~32KB).
+Event `input` (search, auto-resize, tên nhóm): dùng **Custom event** tên `input`, không phải Key Release — để bắt cả paste.
 
-## Ajax Callbacks (8 — tạo trên Messenger page, không phải Application Process)
+### 4 — CSS
+Paste `chat-page.css` vào Page → CSS → Inline (~32KB limit).
 
-| Callback | Mô tả | Params |
-|----------|-------|--------|
-| `chatConvList` | Danh sách hội thoại (sidebar) | — |
-| `chatMsgList` | Lịch sử tin nhắn | x01: conv_id |
-| `chatMemberList` | Thành viên hội thoại | x01: conv_id |
-| `chatContactList` | Danh sách liên lạc (tạo DM/nhóm) | — |
-| `chatSend` | Gửi tin nhắn | x01: conv_id, x02: body, x03: reply_to_msg_id, x04: partner_aus_id |
-| `chatCreate` | Tạo DM hoặc CHANNEL | — |
-| `chatRead` | Đánh dấu đã đọc | x01: conv_id |
-| `chatTyping` | Typing indicator | x01: conv_id |
+### 5 — Schema (chạy 1 lần)
+```sql
+ALTER TABLE CHAT_PARTICIPANTS ADD (
+  is_pinned NUMBER(1) DEFAULT 0 NOT NULL
+    CONSTRAINT chk_part_pinned CHECK (is_pinned IN (0,1)));
+```
 
-SQL đầy đủ: `docs/native.sql`
+## Ajax Callbacks (9 — tạo trên Messenger page, không phải Application Process)
 
-**Gọi từ JS — luôn dùng pageId:**
+| Callback | Loại | Params |
+|----------|------|--------|
+| `chatConvListHtml` | HTML | x01=filter(ALL/DM/GROUP/DOC), x02=search, x03=quick(UNREAD/PINNED) |
+| `chatMsgThreadHtml` | HTML | x01=conv_id |
+| `chatMembersHtml` | HTML | x01=conv_id |
+| `chatContactsHtml` | HTML | — |
+| `chatSend` | JSON | x01=conv_id, x02=body, x03=reply_to_msg_id, x04=partner_aus_id |
+| `chatCreate` | JSON | x01=conv_type, x02=name, x03=members JSON array |
+| `chatRead` | JSON | x01=conv_id |
+| `chatTyping` | JSON | x01=conv_id |
+| `chatPin` | JSON | x01=conv_id, x02=1/0 |
+
+HTML callbacks trả HTML fragment trực tiếp inject vào `innerHTML`. Action callbacks relay qua UTL_HTTP đến Node.js `172.25.10.38:3410`.
+
+**Gọi từ JS — luôn có pageId:**
 ```javascript
 apex.server.process('chatSend', { x01: convId, x02: body, x03: '', x04: '' }, {
-    pageId: window.pageId,   // bắt buộc
+    pageId: window.pageId,
     dataType: 'json',
     success: function(data) { ... }
 });
+// HTML callbacks dùng dataType: 'text'
 ```
 
 ## Kiến trúc Frontend
 
 ```
-FGVD (chat-page.fgvd.js)
-  ├── State: currentConvId, currentAusId, messageCache, participantCache
-  ├── csInit() — khởi tạo, load conv list, bind apex:chatEvent
-  ├── csOnConvSelect(convId) — load thread + members
-  ├── csOnSend() — gửi tin, optimistic update
-  ├── csOnTyping() — debounced typing indicator
-  ├── csOnSearch(query) — search in thread
-  └── window.csOn* — expose tất cả handlers
+FGVD (chat-page.fgvd.js — IIFE)
+  ├── State: activeConvId, AUS_ID, selectedMembers, replyToMsgId, typingUsers
+  ├── csInit()              — load conv list, bind apex:chatEvent
+  ├── csHtml(proc, params, targetId)  — gọi HTML callback → innerHTML
+  ├── csJson(proc, params, cb)        — gọi action callback → JSON
+  ├── csOnConvClick()       — load chatMsgThreadHtml + chatMembersHtml
+  ├── csOnSend()            — gửi tin qua chatSend
+  ├── csOnTyping() debounced — chatTyping → chatTyping_stop
+  ├── csOnSearchInput()     — debounced reload chatConvListHtml
+  └── window.csOn*          — expose tất cả handlers cho DA
 
-apex:chatEvent listener (trong FGVD):
-  type=message    → append tin vào thread nếu đúng conv, reload sidebar badge
+apex:chatEvent listener (giữ trong FGVD, không làm DA):
+  type=message    → reload chatMsgThreadHtml nếu đúng conv
   type=typing     → hiện typing bubble
   type=typing_stop → ẩn bubble
   type=read       → update read receipts
 ```
+
+3 binding giữ trong FGVD (không làm DA): `apex:chatEvent`, outside-click `closeTypeMenu`, outside-click `closeConvMenu`. DA không dùng `document`-level events vì thứ tự chạy mong manh với `stopPropagation`.
+
+## global.js — SSE Client & Notification Bell
+
+`global.js` chạy trên **mọi page** (inject qua Theme). Trách nhiệm:
+- Mint SSE token qua `apex.server.process('sseToken')` → kết nối `EventSource` đến `https://chattest.erp100.vn/api/sse`
+- `handleEvent`: `notification` → `fetchNotifCount()`; `message/typing/read` → trigger `apex:chatEvent` trên document
+- Inject badge `#notif-badge` vào `.user-notificaiton` (typo trong APEX — 1 chữ i)
+- `chatHeartbeat` mỗi 20s → track online presence
+
+`sseToken` và `notificationCount` phải là **Application Process** (không pageId) vì global.js chạy trên mọi page.
 
 ## :APP_USER Pattern (bắt buộc trong mọi callback)
 
@@ -98,62 +123,16 @@ END;
 
 ## MATERIALIZE Pattern (bắt buộc khi JOIN remote tables)
 
-`APP_USERS`, `EMPLOYEES`, `DEPARTMENTS`, `POSITIONS` là remote tables qua DBLINK. Phải dùng `/*+ MATERIALIZE */`:
+Xem chi tiết trong `docs/oracle-db.md` (thư mục cha). Tóm tắt: mọi query JOIN `APP_USERS/EMPLOYEES/DEPARTMENTS/POSITIONS` phải dùng `/*+ MATERIALIZE */` trong CTE, `REGEXP_REPLACE(col, '[[:cntrl:]]', '')` trên text columns, `RETURNING CLOB` trên `JSON_ARRAYAGG`.
 
-```sql
-WITH remote_data AS (
-  SELECT /*+ MATERIALIZE */
-         u.aus_id,
-         REGEXP_REPLACE(NVL(e.full_name,'Unknown'),'[[:cntrl:]]','') AS full_name
-  FROM   APP_USERS u JOIN EMPLOYEES e ON e.emp_id = u.emp_id
-  WHERE  ...
-)
-SELECT JSON_ARRAYAGG(
-    JSON_OBJECT('full_name' VALUE r.full_name, ...) RETURNING CLOB
-  )
-FROM remote_data r LEFT JOIN local_table lt ON lt.aus_id = r.aus_id;
-```
+## Pitfalls đặc thù Chat System
 
-## Schema Chat — Tên cột chuẩn
+**pageId bắt buộc:** Mọi callback chat là page-level. Thiếu `pageId` → APEX tìm Application Process → parsererror.
 
-| Bảng | Cột | Ghi chú |
-|------|-----|---------|
-| `CHAT_CONVERSATIONS` | `conv_type` | `'DM'` hoặc `'CHANNEL'` |
-| `CHAT_CONVERSATIONS` | `doc_type`, `doc_no` | NULL = Messenger; NOT NULL = Doc Chat |
-| `CHAT_MESSENGERS` | `from_aus_id` | Sender (dùng check isMine) |
-| `CHAT_MESSENGERS` | `aus_id` | DM partner; NULL cho CHANNEL |
-| `CHAT_MESSENGERS` | `created_by` | username string (`:G_USER_NAME`) |
-| `DEPARTMENTS` | `dep_name` | Không phải `name` |
-| `POSITIONS` | `position_name` | |
-| `APP_USERS` | `user_name` | Có underscore — không phải `username` |
+**window.csOn* cho DA:** DA chạy global scope, không thấy hàm private trong IIFE. Luôn dùng `window.csOn*`.
 
-## Pitfalls Chat System
+**CHAT_AUS_ID đọc sai = 0:** Nếu set `window.CHAT_AUS_ID` ở Execute-on-load thay vì đầu FGVD → IIFE đọc undefined → AUS_ID = 0 → isMine check sai, read receipts sai.
 
-**pageId bắt buộc trong apex.server.process:** Thiếu `pageId` → APEX tìm Application Process → "Process not found" → parsererror. Mọi callback chat là page-level, phải pass `pageId`.
+**chatPin không relay Node:** Ghim là trạng thái riêng mỗi user (`CHAT_PARTICIPANTS.is_pinned`) — cập nhật local DB trực tiếp, không push SSE event.
 
-**window.csOn* chứ không phải hàm private:** Dynamic Action chạy trong global scope. Hàm trong IIFE không thể gọi trực tiếp — phải dùng `window.csOn*` đã expose.
-
-**conv_id / msg_id:** Luôn dùng `CONV_SEQ.NEXTVAL` / `MSG_SEQ.NEXTVAL` explicit trong INSERT. Không dùng DEFAULT.
-
-**create_date:** Explicit `SYSDATE` trong INSERT — không dùng DEFAULT.
-
-**RETURNING INTO:** Không dùng trong APEX Application Process (ORA-22816). Gán sequence trước:
-```sql
-l_conv_id := CONV_SEQ.NEXTVAL;
-INSERT INTO CHAT_CONVERSATIONS (conv_id, ...) VALUES (l_conv_id, ...);
-```
-
-**INTERVAL literal + remote tables:** Không viết `SYSTIMESTAMP - INTERVAL '35' SECOND` trong SQL chạm remote table — push xuống remote server gây ORA-02000. Dùng PL/SQL variable.
-
-## CSS — Token hệ thống
-
-`chat-page.css` không hardcode màu — map vào ERP design tokens:
-
-| Biến cục bộ | Token hệ thống |
-|-------------|---------------|
-| `--primary` | `var(--primary-color, #15674C)` |
-| `--surface` | `var(--white-color, #FFFFFF)` |
-| `--border` | `var(--border-color, #E6E6E6)` |
-| `--danger` | `var(--red-color, #D81F25)` |
-
-Đổi màu toàn module → sửa khối biến đầu file, không sửa từng rule.
+**chatContactsHtml — không bọc container:** Callback chỉ trả HTML bên trong `#cs-member-suggest-list`, KHÔNG bọc lại thẻ `<div id="cs-member-suggest-list">` — sẽ trùng ID và lồng sai.

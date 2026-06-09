@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Chat Server — Node.js Backend
 
 Node.js 22 middleware chạy trên **Server B** (`172.25.10.38:3410`). Nhận request từ Oracle APEX qua UTL_HTTP, đẩy event real-time về browser qua long-poll, duy trì Oracle CQN subscription.
@@ -77,21 +81,24 @@ curl http://localhost:3410/api/events/<aus_id>
 | POST | `/api/chat/create` | Tạo DM hoặc CHANNEL |
 | GET | `/api/chat/doc-conversations` | Hội thoại theo chứng từ (query: doc_type, doc_no, aus_id) |
 
-## Kiến trúc Real-time (hiện tại — long-poll)
+## Kiến trúc Real-time (hiện tại — SSE)
 
 ```
-CQN: Oracle INSERT vào USER_NOTIFICATIONS
+Notification: Oracle DML trên USER_NOTIFICATIONS (INSERT hoặc UPDATE read='Y')
   → cqn.js: rowid → aus_id (rowidCache) → notifyUser(ausId)
-  → events.js: resolve pending waiter cho aus_id đó
+  → events.js: deliverToUser → sseWrite(res, seq, payload)
   → browser nhận { type: 'notification' }
-  → apex.region('notification-menu').refresh()
+  → fetchNotifCount() → APEX callback 'notificationCount' → COUNT(*) WHERE read='N'
+  → updateNotifBadge(count)
 
 Chat: POST /api/chat/send
   → chat.js: INSERT DB → deliverToConv(convId, payload, senderAusId)
-  → events.js: resolve waiter cho mỗi member
+  → events.js: sseWrite cho mỗi member có SSE conn; buffer nếu offline
   → browser nhận { type: 'message', conv_id, msg: {...} }
   → $(document).trigger('apex:chatEvent', [ev])
 ```
+
+**Notification bell — không dùng plugin:** Badge `#notif-badge` được inject JS vào `<li class="user-notificaiton">` trong Navigation Bar. Click handler do APEX tự xử lý qua `href="#action$a-dialog-open?..."` (page 11000130215). Không override click.
 
 ## Module Internals
 
@@ -101,15 +108,19 @@ Chat: POST /api/chat/send
 - Express v5: async route errors tự động propagate — không cần `express-async-errors` shim
 
 ### events.js
-- `eventWaiters` Map: `aus_id → [{ res, timeout }]` — 1 waiter/user; conn mới đẩy conn cũ ra
-- `eventBuffer` Map: buffer at-least-once cho `message/read/notification` khi không có waiter (BUFFER_MAX=100, TTL=60s)
-- `drainAll()`: flush mọi waiter với `{ type:'timeout' }` khi shutdown
+- `sseConnections` Map: `aus_id → res` — 1 SSE conn/user; conn mới đẩy conn cũ ra (ghi event `replaced`)
+- `eventBuffer` Map: buffer at-least-once cho `message/read/notification` với `seq` tăng dần — dùng cho SSE replay theo `Last-Event-ID` (BUFFER_MAX=100, TTL=60s)
+- `registerSSE()`: flush buffer từ `lastEventId` khi reconnect
+- `deliverToUser()`: SSE conn mở → `sseWrite` ngay; không có conn → buffer
+- `drainAll()`: ghi event `close` và end mọi SSE conn khi shutdown
 
 ### cqn.js
 - `rowidCache` Map: rowid → aus_id — load từ DB lúc startup; INSERT thêm, DELETE đọc-và-xóa
+- **Subscription SQL:** `SELECT ano_id, aus_id FROM user_notifications WHERE read = 'N'` — filter `WHERE read = 'N'` để CQN fire cả khi UPDATE `read = 'Y'` (mark as read), không chỉ INSERT/DELETE
 - Retry tự động sau 15s nếu subscription fail
 - Khi Oracle gửi >80 ROWID trong 1 transaction → gửi none → `handleFullScan()` fallback
 - CQN connection dùng `events: true`; DB query dùng **pool connection riêng** — không query trên CQN connection
+- UPDATE `read = 'Y'` → row rời result set → Oracle báo rowid → `handleRowid()` query aus_id từ row (vẫn tồn tại trong bảng) → `notifyUser(ausId)`
 
 ### chat.js
 - `withConn(fn)`: get pool conn → gọi fn(conn) → close trong finally
@@ -139,13 +150,14 @@ Chat: POST /api/chat/send
 
 **UTL_HTTP POST từ Oracle — Connection: close bắt buộc:** Mọi POST callback PL/SQL phải có `Connection: close` header + `WRITE_RAW`. Xem `docs/pitfalls.md`.
 
-## APEX Callback liên quan (Page 0)
+## APEX Callbacks liên quan (Page 0)
 
-Callback `appEvents` (Page 0) là entry point từ browser:
-```
-Browser apex.server.process('appEvents')
-  → APEX PL/SQL → UTL_HTTP GET /api/events/:aus_id (25s long-poll)
-  ← { type, ... }
-```
+**`sseToken`** — mint HMAC-SHA256 token cho SSE client, TTL 120s. Secret đọc từ `:G_SSE_SECRET` (Application Item, populated từ `CHAT_CONFIG` table).
 
-Chi tiết SQL callback + global.js poll loop: `docs/notification.md`
+**`notificationCount`** — Application Process, trả `{ count: N }` — gọi sau mỗi SSE event `{ type:'notification' }`. Resolve aus_id từ `:APP_USER`.
+
+**`chatHeartbeat`** — MERGE vào `CHAT_USER_ONLINE` mỗi 20s, dùng `:G_AUS_ID` (reliable trên Page 0).
+
+**`loadAppConfig`** — Application Process (Before Header), đọc `CHAT_CONFIG WHERE key='SSE_SECRET'` → `:G_SSE_SECRET`.
+
+Source SQL đầy đủ: `chat-system/docs/page0-callbacks.sql`

@@ -7,7 +7,8 @@ const cors     = require('cors');
 const oracledb = require('oracledb');
 const { startCQN }                        = require('./cqn');
 const { router: chatRouter }              = require('./chat');
-const { addWaiter, notifyUser, drainAll } = require('./events');
+const { notifyUser, drainAll, registerSSE } = require('./events');
+const { verifyToken } = require('./token');
 
 oracledb.initOracleClient();
 
@@ -62,18 +63,57 @@ app.get('/api/notify/:aus_id', (req, res) => {
     res.json({ status: 'ok' });
 });
 
-// Unified long-poll: resolves on notification OR chat event, times out after 25s.
-// APEX appEvents callback (Page 0) calls this — replaces the old /api/wait and /api/chat/events.
-// Response shapes: { type:'notification' } | { type:'message'|'typing'|..., ... } | { type:'timeout' }
-app.get('/api/events/:aus_id', (req, res) => {
-    addWaiter(req.params.aus_id, req, res);
+// SSE endpoint — browser kết nối trực tiếp qua nginx (không qua ORDS)
+const SSE_ORIGIN = process.env.SSE_ORIGIN || 'https://erp.greensys.vn:8211';
+const SSE_PING_MS = 25_000;
+const sseIntervals = new Set();
+
+app.get('/api/sse', (req, res) => {
+    const origin = req.headers.origin || '';
+    if (origin && origin !== SSE_ORIGIN) {
+        return res.status(403).end();
+    }
+
+    const token = req.query.token;
+    const parsed = verifyToken(token);
+    if (!parsed) return res.status(401).json({ error: 'invalid_token' });
+
+    const { ausId } = parsed;
+
+    res.set({
+        'Content-Type':                'text/event-stream',
+        'Cache-Control':               'no-cache',
+        'Connection':                  'keep-alive',
+        'X-Accel-Buffering':           'no',
+        'Access-Control-Allow-Origin': SSE_ORIGIN,
+    });
+    res.flushHeaders();
+
+    registerSSE(ausId, res, req.query.lastEventId || req.headers['last-event-id']);
+
+    // Heartbeat chống proxy idle-timeout
+    const ping = setInterval(() => {
+        try { res.write(': ping\n\n'); }
+        catch (_) { clearInterval(ping); sseIntervals.delete(ping); }
+    }, SSE_PING_MS);
+    sseIntervals.add(ping);
+
+    req.on('close', () => {
+        clearInterval(ping);
+        sseIntervals.delete(ping);
+    });
+
+    console.log('[SSE] connect aus_id=%s', ausId);
 });
+
 
 // ──────────────────────────────────────────────
 // Graceful shutdown (pm2 restart / SIGTERM)
 // ──────────────────────────────────────────────
 function shutdown(signal) {
     console.log('[Server] %s received — shutting down gracefully', signal);
+    sseIntervals.forEach(t => clearInterval(t));
+    sseIntervals.clear();
     drainAll();
     server.close(() => {
         oracledb.getPool().close(10)

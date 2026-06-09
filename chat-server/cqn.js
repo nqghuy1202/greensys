@@ -2,10 +2,13 @@
 
 const oracledb = require('oracledb');
 
-const SUBSCR_NAME       = 'notifications_watcher';
-const RETRY_INTERVAL_MS = 15_000;
+const SUBSCR_NAME        = 'notifications_watcher';
+const RETRY_INTERVAL_MS  = 15_000;
+const HEALTH_CHECK_MS    = 5 * 60_000; // kiểm tra subscription mỗi 5 phút
 
-let _emitFn = null;
+let _emitFn      = null;
+let _cqnConn     = null;
+let _healthTimer = null;
 const rowidCache = new Map(); // rowid → aus_id
 
 // ──────────────────────────────────────────────
@@ -16,7 +19,7 @@ async function loadCache() {
     try {
         conn = await oracledb.getConnection();
         const result = await conn.execute(
-            `SELECT rowid, aus_id FROM user_notifications`,
+            `SELECT rowid, aus_id FROM user_notifications WHERE read = 'N'`,
             [],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
@@ -61,7 +64,10 @@ async function handleRowid(rowid) {
 function handleDeleteRowid(rowid) {
     const ausId = rowidCache.get(rowid);
     if (!ausId) {
-        console.warn('[CQN] DELETE rowid not in cache:', rowid);
+        // Rowid không có trong cache (row tồn tại trước khi server start hoặc cache miss)
+        // Chạy full scan để notify tất cả user bị ảnh hưởng
+        console.warn('[CQN] DELETE rowid not in cache — running full scan:', rowid);
+        handleFullScan();
         return;
     }
     rowidCache.delete(rowid);
@@ -128,14 +134,39 @@ function onMessage(message) {
 // ──────────────────────────────────────────────
 // Start CQN (auto-retry loop)
 // ──────────────────────────────────────────────
+// Kiểm tra subscription còn sống trong Oracle không
+async function checkSubscriptionHealth() {
+    let conn;
+    try {
+        conn = await oracledb.getConnection();
+        const result = await conn.execute(
+            `SELECT COUNT(*) AS cnt FROM user_change_notification_regs
+             WHERE subscription_name = :name`,
+            { name: SUBSCR_NAME },
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+        const alive = result.rows[0].CNT > 0;
+        if (!alive) {
+            console.warn('[CQN] Health check: subscription gone — restarting');
+            if (_healthTimer) { clearInterval(_healthTimer); _healthTimer = null; }
+            if (_cqnConn) { _cqnConn.close().catch(() => {}); _cqnConn = null; }
+            setTimeout(() => startCQN(_emitFn), 1000);
+        }
+    } catch (err) {
+        console.error('[CQN] Health check error:', err.message);
+    } finally {
+        if (conn) await conn.close().catch(() => {});
+    }
+}
+
 async function startCQN(emitFn) {
     _emitFn = emitFn;
+    if (_healthTimer) { clearInterval(_healthTimer); _healthTimer = null; }
 
     await loadCache();
 
-    let cqnConn;
     try {
-        cqnConn = await oracledb.getConnection({
+        _cqnConn = await oracledb.getConnection({
             user:          process.env.DB_USER,
             password:      process.env.DB_PASSWORD,
             connectString: process.env.DB_CONNECTION_STRING,
@@ -143,8 +174,8 @@ async function startCQN(emitFn) {
         });
         console.log('[CQN] Connected. Registering subscription...');
 
-        await cqnConn.subscribe(SUBSCR_NAME, {
-            sql:       `SELECT ano_id, aus_id FROM user_notifications`,
+        await _cqnConn.subscribe(SUBSCR_NAME, {
+            sql:       `SELECT ano_id, aus_id FROM user_notifications WHERE read = 'N'`,
             ipAddress: process.env.CQN_HOST,
             port:      Number(process.env.CQN_PORT),
             qos:       oracledb.SUBSCR_QOS_QUERY | oracledb.SUBSCR_QOS_ROWIDS,
@@ -153,15 +184,20 @@ async function startCQN(emitFn) {
 
         console.log('[CQN] Subscription active on USER_NOTIFICATIONS');
 
-        cqnConn.on('error', (err) => {
+        // Periodic health check — phát hiện khi Oracle drop subscription không gửi event
+        _healthTimer = setInterval(checkSubscriptionHealth, HEALTH_CHECK_MS);
+
+        _cqnConn.on('error', (err) => {
             console.error('[CQN] Connection error:', err.message);
-            cqnConn.close().catch(() => {});
+            if (_healthTimer) { clearInterval(_healthTimer); _healthTimer = null; }
+            _cqnConn.close().catch(() => {});
+            _cqnConn = null;
             setTimeout(() => startCQN(emitFn), RETRY_INTERVAL_MS);
         });
 
     } catch (err) {
         console.error('[CQN] Startup error:', err.message);
-        if (cqnConn) cqnConn.close().catch(() => {});
+        if (_cqnConn) { _cqnConn.close().catch(() => {}); _cqnConn = null; }
         console.log('[CQN] Retrying in %ds...', RETRY_INTERVAL_MS / 1000);
         setTimeout(() => startCQN(emitFn), RETRY_INTERVAL_MS);
     }

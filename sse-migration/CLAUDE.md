@@ -1,162 +1,105 @@
-# SSE Migration — Real-time Upgrade
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+# SSE Migration — Real-time Upgrade ✅ HOÀN THÀNH
 
 Thay kênh nhận real-time từ **long-poll** (APEX → ORDS → UTL_HTTP → Node) sang **SSE trực tiếp** (browser → nginx → Node), giải phóng ORDS thread, mục tiêu >100 user online đồng thời.
 
-**Trạng thái: Phase 0 bị chặn** — provider firewall chưa mở port 80/443 inbound. Cần nhờ phòng hệ thống mở port 80 TCP cho `103.109.xx.xx`.
+## Trạng thái (2026-06-09) — TẤT CẢ PHASE XONG
+
+| Phase | Nội dung | Trạng thái |
+|-------|---------|-----------|
+| **Phase 0** | nginx + certbot TLS `chattest.erp100.vn` → `172.25.10.38:3410` | ✅ Xong |
+| **Phase 1** | `token.js`, route `/api/sse`, SSE registry trong `events.js` | ✅ Xong |
+| **Phase 2** | APEX `sseToken` callback + `global.js` SSE client | ✅ Xong |
+| **Phase 3** | Xóa `appEvents`/`notificationWait` long-poll, rewrite events.js/server.js/global.js | ✅ Xong |
 
 ## Quyết định đã chốt (không thay đổi)
 
 | Quyết định | Chi tiết |
 |------------|---------|
 | Transport | **SSE thuần** (`EventSource` browser, `res.write` Node). Không WebSocket, không Socket.IO |
-| Auth | Token HMAC-SHA256 ký từ APEX (`DBMS_CRYPTO`), verify ở Node, truyền qua **query string** (EventSource không set được custom header) |
-| Hạ tầng | **nginx có sẵn trên Server B** + certbot Let's Encrypt. Không Caddy, không đụng Server A |
-| Phạm vi | Chỉ kênh NHẬN event. Action (`send/typing/read/heartbeat`) **giữ nguyên** `apex.server.process → UTL_HTTP` |
-| Endpoint | `https://chat.greensys.vn/api/sse` (SSE) — độc lập với ORDS |
+| Auth | Token HMAC-SHA256 ký từ APEX (`DBMS_CRYPTO`), verify ở Node, truyền qua **query string** |
+| Hạ tầng | nginx (`chattest.erp100.vn`) + certbot Let's Encrypt trên Server B |
+| Phạm vi | Chỉ kênh NHẬN event. Action (`send/typing/read/heartbeat`) giữ nguyên `apex.server.process → UTL_HTTP` |
+| Endpoint | `https://chattest.erp100.vn/api/sse` |
+| Secret | Lưu trong Oracle table `CHAT_CONFIG (key, value)`, đọc qua Application Process `loadAppConfig` (Before Header) vào Application Item `G_SSE_SECRET` |
 
-## Files
-
-```
-sse-migration/
-  CLAUDE.md                    ← file này
-  planning/
-    ws-migration-plan.md            ← kế hoạch đầy đủ 4 phase
-    ws-migration-phase0-runbook.md  ← lệnh step-by-step cho Phase 0
-    phase0-infrastructure-explained.md  ← giải thích nginx/certbot/TLS cho người mới
-```
-
-> Tên file giữ `ws-migration-*` vì lý do lịch sử — transport đã đổi sang SSE từ 2026-06-04.
-
-## Kiến trúc SSE (sau migration)
+## Kiến trúc SSE (live)
 
 ```
 Browser (erp.greensys.vn:8211)
-  │  new EventSource('https://chat.greensys.vn/api/sse?token=<HMAC>&lastEventId=<id>')
+  │  new EventSource('https://chattest.erp100.vn/api/sse?token=<HMAC>&lastEventId=<id>')
   ▼
-nginx (Server B :443, TLS Let's Encrypt)
-  proxy_buffering off / proxy_read_timeout 65s / http2 on
+nginx (Server B :443, TLS Let's Encrypt, proxy_buffering off)
   ▼
 Node.js localhost:3410  GET /api/sse
   │  verifyToken() → ausId
-  │  registerConnection(ausId, res)
-  │  res.write('id: N\ndata: {...}\n\n')
+  │  registerSSE(ausId, res, lastEventId)  → flush buffer từ lastEventId
+  │  res.write('id: N\ndata: {...}\n\n')   → heartbeat ': ping' mỗi 25s
   ▼
 Browser onmessage → $(document).trigger('apex:chatEvent', [data])
 ```
 
-## Lộ trình 4 Phase
+## Token Format
 
-| Phase | Nội dung | Trạng thái |
-|-------|---------|-----------|
-| **Phase 0** | nginx + certbot TLS trên Server B | 🚧 Chờ DNS |
-| **Phase 1** | Node.js `GET /api/sse` + `token.js` + cập nhật `events.js` | ⬜ Chưa |
-| **Phase 2** | APEX `sseToken` callback + `global.js` SSE client + feature flag `USE_SSE` | ⬜ Chưa |
-| **Phase 3** | Cutover (bật `USE_SSE=true`), xóa long-poll, dọn dẹp | ⬜ Chưa |
-
-## Phase 0 — Acceptance Criteria
-
-- [x] `dig chat.greensys.vn` → `103.109.xx.xx` (DNS đã xong)
-- [x] nginx 1.14.1 đã cài, config `/etc/nginx/conf.d/chat-sse.conf` đã tạo
-- [x] certbot đã cài (`python3-certbot-nginx`)
-- [x] OS firewall đã mở http/https (`firewall-cmd`)
-- [ ] **ĐANG CHẶN:** Provider firewall mở port 80/443 inbound (nhờ phòng hệ thống)
-- [ ] `sudo certbot --nginx -d chat.greensys.vn` thành công
-- [ ] `curl -v https://chat.greensys.vn/health` → 200, TLS hợp lệ (không `-k`)
-- [ ] Từ console `erp.greensys.vn`: `new EventSource('https://chat.greensys.vn/api/sse')` → không Mixed Content (401/404 từ Node là OK ở Phase 0)
-
-Chi tiết lệnh: `planning/ws-migration-phase0-runbook.md`
-
-## Phase 1 — Files cần tạo/sửa
-
-| File | Thay đổi |
-|------|---------|
-| `chat-server/token.js` | Mới — `verifyToken(token) → {ausId} \| null` |
-| `chat-server/server.js` | Thêm `GET /api/sse` route (giữ long-poll song song) |
-| `chat-server/events.js` | Thêm `connections` Map, `registerConnection`, cập nhật `deliverToUser` ghi SSE |
-| `chat-server/.env` | Thêm `SSE_SECRET=<bí mật mạnh>` |
-
-**Token format (chốt cứng):**
 ```
-body  = base64url("<aus_id>|<exp_epoch_seconds>")
-sig   = base64url(HMAC_SHA256(body, SSE_SECRET))
+body  = base64url("<aus_id>|<exp_epoch_seconds>")    ← UTL_RAW.CAST_TO_VARCHAR2 + UTL_ENCODE
+sig   = base64url(HMAC_SHA256(body, G_SSE_SECRET))   ← DBMS_CRYPTO.MAC typ=>3 (không phải 2!)
 token = body + "." + sig
+TTL   = 120 giây
 ```
 
-## Phase 2 — APEX changes
+**Node verify:** `chat-server/token.js` — `verifyToken(token) → { ausId } | null`
 
-| APEX | Nội dung |
+**APEX mint:** Page 0 Ajax Callback `sseToken` — source SQL: `chat-system/docs/page0-callbacks.sql`
+
+## Files liên quan
+
+| File | Vai trò |
 |------|---------|
-| Page 0 callback `sseToken` | Mint HMAC token dùng `DBMS_CRYPTO.MAC` + `DBMS_CRYPTO.HMAC_SH256` |
-| `global.js` (Theme) | `connectSSE()` → `sseToken` → `new EventSource(...)` với backoff + re-mint khi error |
-| Application Item | `SSE_SECRET` — không hardcode trong callback |
+| `chat-server/token.js` | Verify HMAC token |
+| `chat-server/events.js` | SSE registry (`sseConnections` Map), `registerSSE`, `deliverToUser`, seq-based replay buffer |
+| `chat-server/server.js` | Route `GET /api/sse` — verify token, set SSE headers, heartbeat 25s |
+| `chat-system/global.js` | SSE client: `connectSSE()`, `mintToken()`, backoff re-mint |
+| `chat-system/docs/page0-callbacks.sql` | SQL cho `sseToken`, `chatHeartbeat`, `notificationCount` |
+| `planning/ws-migration-plan.md` | Kế hoạch đầy đủ 4 phase (lịch sử) |
 
-**Quan trọng:** Không dùng auto-reconnect của EventSource — token cũ hết hạn (120s) → kẹt 401. Phải `es.close()` → re-mint → `new EventSource(...)`.
+## APEX Callbacks hiện tại (Page 0)
+
+| Callback | Loại | Vai trò |
+|----------|------|---------|
+| `sseToken` | Ajax Callback | Mint HMAC token cho SSE client |
+| `chatHeartbeat` | Ajax Callback | MERGE `CHAT_USER_ONLINE` mỗi 20s — online presence |
+| `notificationCount` | Application Process | COUNT `USER_NOTIFICATIONS WHERE read='N'` |
+| `loadAppConfig` | Application Process (Before Header) | Đọc `CHAT_CONFIG` → populate `G_SSE_SECRET` |
+
+**Đã xóa:** `appEvents` (long-poll), `notificationWait` (long-poll cũ)
+
+## Env var Server B
+
+```
+G_SSE_SECRET=<64-char hex>   # khớp với CHAT_CONFIG WHERE key='SSE_SECRET'
+```
+
+## Pitfalls SSE
+
+**`proxy_buffering off` bắt buộc trong nginx** — thiếu là SSE không flush tới browser.
+
+**`typ => 3` không phải `typ => 2`** — `DBMS_CRYPTO.HMAC_SH256 = 3`; `typ => 2` = SHA1 (20 bytes, sai).
+
+**`UTL_RAW.CAST_TO_VARCHAR2` bắt buộc khi base64** — gán RAW thẳng vào VARCHAR2 → Oracle hex-encode, không phải base64.
+
+**Không dùng auto-reconnect của EventSource** — token TTL 120s, auto-reconnect dùng token cũ → kẹt 401. Phải `es.close()` → re-mint → `new EventSource(...)`.
+
+**Application Process `On New Session` không đủ** — session cũ không trigger. Dùng `Before Header` cho `loadAppConfig`.
+
+**`http2 on;` chỉ nginx ≥ 1.25** — nginx 1.20.x dùng `listen 443 ssl http2;` (trên cùng dòng).
 
 ## KHÔNG đụng vào
 
 - `cqn.js` — CQN subscription không thay đổi
-- `chat-page.fgvd.js`, `doc-chat-page.fgvd.js` — không cần sửa
+- `chat-page.fgvd.js`, `doc-chat-page.fgvd.js`
 - Mọi action callback PL/SQL (`chatSend`, `docChatTyping`, v.v.)
-- Server A (APEX/ORDS) — chỉ sửa qua APEX Builder bình thường
-- Long-poll `GET /api/events/:aus_id` — giữ song song cho tới Phase 3
-
-## nginx config snippet (Phase 0)
-
-> **nginx 1.14.1** trên Server B — dùng cú pháp `listen 443 ssl http2;` (KHÔNG dùng `http2 on;` — chỉ có nginx ≥ 1.25 mới hỗ trợ).
-
-File hiện có: `/etc/nginx/conf.d/chat-sse.conf` (certbot sẽ tự thêm block 443 sau khi chạy). Sau certbot, sửa thủ công:
-
-```bash
-sudo sed -i 's/listen 443 ssl;/listen 443 ssl http2;/' /etc/nginx/conf.d/chat-sse.conf
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-Config mẫu đầy đủ sau certbot:
-```nginx
-server {
-    listen 443 ssl http2;              # ← http2 trên cùng dòng, không phải dòng riêng
-    server_name chat.greensys.vn;
-
-    ssl_certificate     /etc/letsencrypt/live/chat.greensys.vn/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/chat.greensys.vn/privkey.pem;
-
-    location /api/sse {
-        proxy_pass            http://127.0.0.1:3410;
-        proxy_http_version    1.1;
-        proxy_buffering       off;     # bắt buộc cho SSE — thiếu là không flush
-        proxy_cache           off;
-        proxy_read_timeout    3600s;
-        proxy_set_header      Host $host;
-        proxy_set_header      X-Real-IP $remote_addr;
-        proxy_set_header      X-Forwarded-Proto $scheme;
-        add_header            X-Accel-Buffering no;
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:3410;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-server {
-    listen 80;
-    server_name chat.greensys.vn;
-    return 301 https://$host$request_uri;
-}
-```
-
-## Phát hiện kiến trúc quan trọng (2026-06-06)
-
-**Server A → Server B nội bộ hoạt động:**
-- Long-poll callback `appEvents` gọi `http://172.25.10.38:3410/api/events/:aus_id` qua UTL_HTTP — đã xác nhận hoạt động
-- Test từ SQL Workshop thất bại ORA-29273 vì Oracle ACL chỉ cấp cho schema APEX, không cho SQL Workshop schema
-- Khi test UTL_HTTP phải chạy từ APEX Application Process, không phải anonymous block SQL Workshop
-
-**Port 3410 public — không cần thiết cho long-poll:**
-Long-poll đi qua IP nội bộ `172.25.10.38`, không qua public port 3410. Port 3410 public hiện là rủi ro bảo mật (endpoint Node.js không có auth). Nên đóng sau Phase 3 nếu dùng port 443 cho SSE.
-
-**Oracle Wallet trên Server A:**
-`CreateWatermarkPdf` dùng wallet tại `file:/u01/app/oracle/wallet` để gọi server khác (`172.25.10.205:3000`), không phải chat-server. Chat callbacks dùng UTL_HTTP HTTP thuần. Wallet không liên quan SSE migration.
-
-**Provider firewall vs OS firewall:**
-Server B có 2 lớp firewall độc lập. OS firewall (`firewalld`) đã mở http/https. Provider firewall (quản lý qua web panel nhà cung cấp VPS) vẫn chặn — user không có quyền, cần phòng hệ thống.
+- Server A (APEX/ORDS)
