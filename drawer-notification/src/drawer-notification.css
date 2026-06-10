@@ -1,0 +1,600 @@
+/* ============================================================
+   Drawer Notification — ERP Greensys
+   Scope: .notif-* (dùng trong APEX Page 0)
+   Màu map sang design token hệ thống, fallback nếu chưa có token
+   ============================================================ */
+
+/* --- Design tokens (map sang hệ thống ERP) --- */
+:root {
+  --dn-primary:       var(--primary-color, #15674C);
+  --dn-primary-600:   var(--primary-color, #12563E);
+  --dn-surface:       var(--white-color, #FFFFFF);
+  --dn-surface-2:     #F8FAF9;
+  --dn-active-bg:     var(--fourth-color, #E1F0EB);
+  --dn-border:        var(--border-color, #E6E6E6);
+  --dn-text:          #1A1A1A;
+  --dn-text-2:        #555555;
+  --dn-text-3:        #888888;
+  --dn-danger:        var(--red-color, #D81F25);
+  --dn-warning:       var(--orange-color, #ECA12B);
+  --dn-info:          var(--blue-color, #1B6FD8);
+  --dn-success:       var(--green-color, #319574);
+  --dn-shadow-sm:     0 1px 3px rgba(0,0,0,.08);
+  --dn-shadow-md:     0 4px 16px rgba(0,0,0,.12);
+  --dn-shadow-lg:     0 8px 32px rgba(0,0,0,.16);
+  --dn-drawer-width:  400px;
+  --dn-radius:        12px;
+  --dn-radius-sm:     8px;
+  --dn-radius-xs:     6px;
+  --dn-transition:    0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  --dn-focus-ring:    0 0 0 3px color-mix(in srgb, var(--dn-primary) 15%, transparent);
+}
+
+/* ============================================================
+   DEMO CHROME (xóa khi paste vào APEX)
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #F0F2F1;
+  color: var(--dn-text);
+}
+
+.demo-header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 56px;
+  background: var(--dn-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  z-index: 900;
+  box-shadow: var(--dn-shadow-sm);
+}
+
+.demo-logo {
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: .3px;
+}
+
+.demo-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.demo-avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.25);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700;
+  cursor: pointer;
+  border: 2px solid rgba(255,255,255,.4);
+}
+
+/* ============================================================
+   BELL BUTTON
+   ============================================================ */
+.notif-bell-btn {
+  position: relative;
+  width: 36px; height: 36px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  transition: background var(--dn-transition);
+}
+
+.notif-bell-btn:hover {
+  background: rgba(255,255,255,.15);
+}
+
+.notif-bell-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--dn-focus-ring);
+}
+
+.notif-bell-btn[aria-expanded="true"] {
+  background: rgba(255,255,255,.2);
+}
+
+.notif-bell-icon {
+  width: 20px; height: 20px;
+}
+
+.notif-badge {
+  position: absolute;
+  top: 3px; right: 3px;
+  min-width: 16px; height: 16px;
+  padding: 0 4px;
+  background: var(--dn-danger);
+  color: #fff;
+  font-size: 10px; font-weight: 700;
+  line-height: 16px;
+  border-radius: 8px;
+  text-align: center;
+  border: 1.5px solid var(--dn-primary);
+  pointer-events: none;
+}
+
+/* ============================================================
+   OVERLAY
+   ============================================================ */
+.notif-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.35);
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dn-transition);
+}
+
+.notif-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ============================================================
+   DRAWER
+   ============================================================ */
+.notif-drawer {
+  position: fixed;
+  top: 0; right: 0;
+  width: var(--dn-drawer-width);
+  max-width: 100vw;
+  height: 100dvh;
+  background: var(--dn-surface);
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--dn-shadow-lg);
+  transform: translateX(100%);
+  transition: transform var(--dn-transition);
+  border-radius: var(--dn-radius) 0 0 var(--dn-radius);
+  overflow: hidden;
+}
+
+.notif-drawer.open {
+  transform: translateX(0);
+}
+
+/* --- Drawer Header --- */
+.notif-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 16px 14px;
+  border-bottom: 1px solid var(--dn-border);
+  flex-shrink: 0;
+  background: var(--dn-surface);
+}
+
+.notif-drawer-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notif-drawer-title h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--dn-text);
+  line-height: 1.2;
+}
+
+.notif-count-chip {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dn-primary);
+  background: var(--dn-active-bg);
+  padding: 2px 8px;
+  border-radius: 20px;
+  line-height: 1.5;
+}
+
+.notif-drawer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.notif-text-btn {
+  border: none;
+  background: transparent;
+  color: var(--dn-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 5px 8px;
+  border-radius: var(--dn-radius-xs);
+  transition: background var(--dn-transition);
+  white-space: nowrap;
+}
+
+.notif-text-btn:hover {
+  background: var(--dn-active-bg);
+}
+
+.notif-text-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--dn-focus-ring);
+}
+
+.notif-icon-btn {
+  width: 32px; height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--dn-text-2);
+  transition: background var(--dn-transition), color var(--dn-transition);
+  flex-shrink: 0;
+}
+
+.notif-icon-btn svg {
+  width: 16px; height: 16px;
+}
+
+.notif-icon-btn:hover {
+  background: var(--dn-border);
+  color: var(--dn-text);
+}
+
+.notif-icon-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--dn-focus-ring);
+}
+
+/* --- Filter Tabs --- */
+.notif-tabs {
+  display: flex;
+  padding: 8px 16px 0;
+  gap: 2px;
+  border-bottom: 1px solid var(--dn-border);
+  flex-shrink: 0;
+  background: var(--dn-surface);
+}
+
+.notif-tab {
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dn-text-2);
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: var(--dn-radius-xs) var(--dn-radius-xs) 0 0;
+  position: relative;
+  transition: color var(--dn-transition), background var(--dn-transition);
+  white-space: nowrap;
+}
+
+.notif-tab::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 2px;
+  background: transparent;
+  border-radius: 2px 2px 0 0;
+  transition: background var(--dn-transition);
+}
+
+.notif-tab:hover {
+  color: var(--dn-text);
+  background: var(--dn-surface-2);
+}
+
+.notif-tab.active {
+  color: var(--dn-primary);
+  font-weight: 600;
+}
+
+.notif-tab.active::after {
+  background: var(--dn-primary);
+}
+
+.notif-tab:focus-visible {
+  outline: none;
+  box-shadow: var(--dn-focus-ring);
+}
+
+/* --- Notification List --- */
+.notif-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--dn-border) transparent;
+}
+
+.notif-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.notif-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.notif-list::-webkit-scrollbar-thumb {
+  background: var(--dn-border);
+  border-radius: 4px;
+}
+
+/* --- Section Divider --- */
+.notif-section-divider {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--dn-text-3);
+  padding: 12px 16px 6px;
+}
+
+/* --- Notification Item --- */
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background var(--dn-transition);
+  position: relative;
+  border-bottom: 1px solid transparent;
+}
+
+.notif-item:hover {
+  background: var(--dn-surface-2);
+}
+
+.notif-item.unread {
+  background: color-mix(in srgb, var(--dn-active-bg) 40%, transparent);
+}
+
+.notif-item.unread:hover {
+  background: var(--dn-active-bg);
+}
+
+.notif-item:not(:last-child) {
+  border-bottom-color: var(--dn-border);
+}
+
+/* Avatar */
+.notif-item-avatar {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.notif-item-avatar svg {
+  width: 18px; height: 18px;
+}
+
+.notif-item-avatar.chat     { background: hsl(210, 70%, 52%); }
+.notif-item-avatar.approval { background: var(--dn-primary); }
+.notif-item-avatar.mention  { background: hsl(280, 55%, 52%); }
+.notif-item-avatar.task     { background: var(--dn-success); }
+.notif-item-avatar.alert    { background: var(--dn-warning); }
+
+/* Body */
+.notif-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.notif-item-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.notif-item-sender {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dn-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notif-item-time {
+  font-size: 11px;
+  color: var(--dn-text-3);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.notif-item-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dn-text-2);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.notif-item-text strong {
+  color: var(--dn-text);
+  font-weight: 600;
+}
+
+.notif-item-text em {
+  font-style: italic;
+  color: var(--dn-text);
+}
+
+/* Tags */
+.notif-item-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  align-self: flex-start;
+}
+
+.chat-tag     { background: hsl(210,70%,92%); color: hsl(210,70%,30%); }
+.mention-tag  { background: hsl(280,55%,92%); color: hsl(280,55%,30%); }
+.task-tag     { background: color-mix(in srgb, var(--dn-success) 15%, white); color: color-mix(in srgb, var(--dn-success) 80%, black); }
+.approval-tag { background: var(--dn-active-bg); color: var(--dn-primary-600); }
+.alert-tag    { background: hsl(38,85%,92%); color: hsl(38,85%,30%); }
+
+/* Action buttons inside item */
+.notif-item-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.notif-action-btn {
+  border: 1px solid var(--dn-border);
+  background: var(--dn-surface);
+  color: var(--dn-text-2);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: var(--dn-radius-xs);
+  cursor: pointer;
+  transition: all var(--dn-transition);
+}
+
+.notif-action-btn:hover {
+  border-color: var(--dn-text-3);
+  color: var(--dn-text);
+}
+
+.notif-action-btn.primary {
+  background: var(--dn-primary);
+  border-color: var(--dn-primary);
+  color: #fff;
+}
+
+.notif-action-btn.primary:hover {
+  background: var(--dn-primary-600);
+  border-color: var(--dn-primary-600);
+}
+
+.notif-action-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--dn-focus-ring);
+}
+
+/* Side column: dot + more button */
+.notif-item-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.notif-unread-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--dn-primary);
+  flex-shrink: 0;
+  display: block;
+}
+
+.notif-item-more {
+  width: 26px; height: 26px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--dn-text-3);
+  opacity: 0;
+  transition: opacity var(--dn-transition), background var(--dn-transition), color var(--dn-transition);
+}
+
+.notif-item-more svg {
+  width: 14px; height: 14px;
+}
+
+.notif-item:hover .notif-item-more {
+  opacity: 1;
+}
+
+.notif-item-more:hover {
+  background: var(--dn-border);
+  color: var(--dn-text);
+}
+
+.notif-item-more:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow: var(--dn-focus-ring);
+}
+
+/* --- Drawer Footer --- */
+.notif-drawer-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--dn-border);
+  flex-shrink: 0;
+  background: var(--dn-surface);
+}
+
+.notif-footer-btn {
+  width: 100%;
+  border: 1px solid var(--dn-border);
+  background: var(--dn-surface);
+  color: var(--dn-text-2);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 9px 16px;
+  border-radius: var(--dn-radius-sm);
+  cursor: pointer;
+  transition: all var(--dn-transition);
+}
+
+.notif-footer-btn:hover {
+  border-color: var(--dn-primary);
+  color: var(--dn-primary);
+  background: var(--dn-active-bg);
+}
+
+.notif-footer-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--dn-focus-ring);
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 480px) {
+  :root { --dn-drawer-width: 100vw; }
+
+  .notif-drawer {
+    border-radius: 0;
+  }
+}
+
+/* ============================================================
+   DEMO body padding (xóa khi paste vào APEX)
+   ============================================================ */
+body { padding-top: 56px; }

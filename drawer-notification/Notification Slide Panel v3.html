@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Notification Slide Panel v3 – Optimized</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#E8EBF0;height:100vh;overflow:hidden}
+button,input{font-family:inherit}
+
+/* Thin scrollbar */
+.notif-scroll::-webkit-scrollbar{width:3px}
+.notif-scroll::-webkit-scrollbar-track{background:transparent}
+.notif-scroll::-webkit-scrollbar-thumb{background:#D1D5DB;border-radius:2px}
+.notif-scroll::-webkit-scrollbar-thumb:hover{background:#9CA3AF}
+
+/* Tabs */
+.tab-btn{
+  background:none;border:none;cursor:pointer;
+  padding:8px 13px;font-size:12px;font-weight:600;color:#6B7280;
+  border-bottom:2px solid transparent;transition:color .15s,border-color .15s;
+  white-space:nowrap;flex-shrink:0;line-height:1;
+}
+.tab-btn.active{color:#15674C;border-bottom-color:#15674C}
+.tab-btn:hover:not(.active){color:#374151}
+
+/* Placeholder */
+input::placeholder{color:#9CA3AF}
+
+/* Item hover: time fades, actions appear */
+.notif-item .item-time{transition:opacity .15s ease}
+.notif-item .item-actions{transition:opacity .18s ease,transform .18s ease}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+/* ══════════════════════════════════════════
+   DATA  — ngày hiện tại: 09/06/2026
+══════════════════════════════════════════ */
+const NOW = new Date(2026, 5, 10, 10, 0);
+
+const RAW = [
+  {id:1,  type:'cho_duyet',  nv:'Đề nghị thủ công',                  code:'DN05/0626-01',               sender:null,           time:'09/06/2026 08:30', read:false},
+  {id:2,  type:'quy_trinh',  nv:'Hợp đồng dịch vụ',                  code:'HD-SVC-2026/031',            sender:'admin.hr',     time:'09/06/2026 07:15', read:false},
+  {id:3,  type:'hoan_thanh', nv:'Đăng ký đi công tác',               code:'TRS-06.26/003',              sender:'manhdinh.sp',  time:'08/06/2026 16:45', read:false},
+  {id:4,  type:'cho_duyet',  nv:'Phiếu chi nội bộ',                  code:'PCHI-06.26/005',             sender:null,           time:'06/06/2026 10:00', read:false},
+  {id:5,  type:'quy_trinh',  nv:'Đề nghị mua hàng',                  code:'MH-2026-0441',               sender:'nguyen.van',   time:'05/06/2026 14:30', read:true},
+  {id:6,  type:'cho_duyet',  nv:'Quyết toán công tác',               code:'QT-05.26/007',               sender:null,           time:'20/05/2026 16:00', read:false},
+  {id:7,  type:'hoan_thanh', nv:'Đề nghị tạm ứng lương',             code:'DNU-1223/0005',              sender:'support.gc',   time:'15/05/2026 11:39', read:true},
+  {id:8,  type:'cho_duyet',  nv:'Đề nghị tạm ứng mua hàng',         code:'DNU-1124/0001',              sender:null,           time:'10/05/2026 15:20', read:true},
+  {id:9,  type:'hoan_thanh', nv:'Khế ước vay',                       code:'CHUACO-21.01/002',           sender:'support.gc',   time:'15/04/2026 15:20', read:true},
+  {id:10, type:'cho_duyet',  nv:'Bảng giá bán cho khách hàng',       code:'SL-DRAO_CITY-0001-2508/004', sender:null,           time:'20/11/2025 11:39', read:true},
+  {id:11, type:'quy_trinh',  nv:'Điều chỉnh bảng giá vật tư dự án', code:'PL-SUPPLIER-0002.2512/001',  sender:'admin.sales',  time:'29/05/2025 15:25', read:true},
+  {id:12, type:'hoan_thanh', nv:'Hợp đồng dịch vụ kỹ thuật',        code:'HD-SVC-2025/012',            sender:'admin.hr',     time:'07/06/2025 09:30', read:true},
+];
+
+/* ══════════════════════════════════════════
+   HELPERS
+══════════════════════════════════════════ */
+function parseDate(str) {
+  const [dp, tp] = str.split(' ');
+  const [d, m, y] = dp.split('/').map(Number);
+  const [h, mn]   = tp.split(':').map(Number);
+  return new Date(y, m - 1, d, h, mn);
+}
+
+function relTime(str) {
+  const diff = NOW - parseDate(str);
+  const mins = Math.floor(diff / 60000);
+  const hrs  = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (mins < 1)   return 'Vừa xong';
+  if (mins < 60)  return `${mins} phút trước`;
+  if (hrs  < 24)  return `${hrs} giờ trước`;
+  if (days === 1) return 'Hôm qua';
+  if (days < 7)   return `${days} ngày trước`;
+  if (days < 30)  return `${Math.floor(days / 7)} tuần trước`;
+  if (days < 365) return `${Math.floor(days / 30)} tháng trước`;
+  return `${Math.floor(days / 365)} năm trước`;
+}
+
+function groupKey(str) {
+  const days = Math.floor((NOW - parseDate(str)) / 86400000);
+  if (days === 0) return 'HÔM NAY';
+  if (days === 1) return 'HÔM QUA';
+  if (days < 7)   return 'TUẦN NÀY';
+  if (days < 30)  return 'THÁNG NÀY';
+  if (days < 60)  return 'THÁNG TRƯỚC';
+  return 'CŨ HƠN';
+}
+
+const GROUP_ORDER = ['HÔM NAY', 'HÔM QUA', 'TUẦN NÀY', 'THÁNG NÀY', 'THÁNG TRƯỚC', 'CŨ HƠN'];
+
+/* ══════════════════════════════════════════
+   TYPE CONFIG
+══════════════════════════════════════════ */
+const TC = {
+  cho_duyet:  {label:'Chờ duyệt',  color:'#92400E', bg:'#FFFBEB', border:'#FDE68A', dot:'#F59E0B', bar:'#F59E0B'},
+  hoan_thanh: {label:'Hoàn thành', color:'#065F46', bg:'#F0FDF4', border:'#86EFAC', dot:'#22C55E', bar:'#22C55E'},
+  quy_trinh:  {label:'Quy trình',  color:'#1E3A8A', bg:'#EFF6FF', border:'#93C5FD', dot:'#3B82F6', bar:'#3B82F6'},
+};
+
+const TITLE_FN = {
+  cho_duyet:  nv => `Chờ duyệt — ${nv}`,
+  hoan_thanh: nv => `Hoàn thành — ${nv}`,
+  quy_trinh:  nv => `Quy trình — ${nv}`,
+};
+
+const TABS = [
+  {id:'all',        label:'Tất cả'},
+  {id:'cho_duyet',  label:'Chờ duyệt'},
+  {id:'hoan_thanh', label:'Hoàn thành'},
+  {id:'quy_trinh',  label:'Quy trình'},
+];
+
+/* ══════════════════════════════════════════
+   ICONS
+══════════════════════════════════════════ */
+const ISearch = ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>;
+const IBell   = ()=><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>;
+const ICheck  = ()=><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>;
+const IDblChk = ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z"/></svg>;
+const ITrash  = ()=><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>;
+const IClose  = ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>;
+const ILink   = ()=><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>;
+const IDoc    = ()=><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>;
+const IUser   = ()=><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>;
+
+/* ══════════════════════════════════════════
+   MOCK APEX BACKGROUND
+══════════════════════════════════════════ */
+function MockApex() {
+  const wCols = ['55%','40%','65%','50%','45%','60%'];
+  return (
+    <div style={{position:'absolute',inset:0,background:'#F0F2F5',overflow:'hidden'}}>
+      <div style={{background:'#fff',height:52,borderBottom:'1px solid #E5E7EB',
+        display:'flex',alignItems:'center',padding:'0 20px',gap:10}}>
+        <div style={{width:28,height:28,background:'#15674C',borderRadius:6,
+          display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
+            <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/>
+          </svg>
+        </div>
+        <span style={{fontSize:12,fontWeight:800,color:'#111827'}}>ERP System</span>
+        <div style={{flex:1,display:'flex',gap:1,paddingLeft:12}}>
+          {['Dashboard','Mua hàng','Kho','Kế toán','Nhân sự'].map((m,i)=>(
+            <div key={m} style={{padding:'4px 10px',borderRadius:5,fontSize:11,fontWeight:600,
+              background:i===0?'#E1F0EB':'transparent',color:i===0?'#15674C':'#9CA3AF'}}>
+              {m}
+            </div>
+          ))}
+        </div>
+        <div style={{width:30,height:30,borderRadius:'50%',
+          background:'linear-gradient(135deg,#15674C,#1B8560)',
+          color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',
+          fontSize:11,fontWeight:800}}>TT</div>
+      </div>
+      <div style={{padding:'18px 22px'}}>
+        <div style={{fontSize:10,fontWeight:800,color:'#9CA3AF',
+          letterSpacing:'.1em',textTransform:'uppercase',marginBottom:14}}>
+          Dashboard Nhân Viên
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
+          {wCols.map((w,i)=>(
+            <div key={i} style={{background:'#fff',borderRadius:8,padding:'14px',border:'1px solid #E5E7EB'}}>
+              <div style={{width:w,height:8,background:'#E5E7EB',borderRadius:3,marginBottom:8}}/>
+              <div style={{width:'30%',height:6,background:'#F3F4F6',borderRadius:3,marginBottom:10}}/>
+              <div style={{display:'flex',gap:5}}>
+                {[0,1,2].map(j=>(
+                  <div key={j} style={{height:18,flex:1,background:'#F9FAFB',borderRadius:3,border:'1px solid #F3F4F6'}}/>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{position:'absolute',inset:0,background:'rgba(15,23,42,0.34)'}}/>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   NOTIFICATION ITEM
+══════════════════════════════════════════ */
+function NotifItem({n, onMarkRead, onRemove}) {
+  const [hov, setHov] = React.useState(false);
+  const tc = TC[n.type];
+
+  return (
+    <div
+      className="notif-item"
+      onMouseEnter={()=>setHov(true)}
+      onMouseLeave={()=>setHov(false)}
+      style={{
+        position:'relative',
+        borderBottom:'1px solid #F3F4F6',
+        borderLeft:`3px solid ${n.read ? '#EBEBEB' : tc.bar}`,
+        background: hov ? '#F6FBF8' : (n.read ? '#fff' : '#FAFDF9'),
+        transition:'background .15s',
+      }}
+    >
+      <div style={{padding:'11px 14px 10px 13px'}}>
+
+        {/* ── Row 1: Badge + Relative time ── */}
+        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:5}}>
+          {!n.read && (
+            <div style={{width:6,height:6,borderRadius:'50%',
+              background:tc.bar,flexShrink:0}}/>
+          )}
+          {/* Pill badge */}
+          <span style={{
+            fontSize:10,fontWeight:700,letterSpacing:'.02em',
+            color:tc.color,background:tc.bg,
+            border:`1px solid ${tc.border}`,
+            padding:'2px 9px',borderRadius:99,flexShrink:0,
+          }}>
+            {tc.label}
+          </span>
+          {/* Time – fades out on hover */}
+          <span
+            className="item-time"
+            style={{
+              marginLeft:'auto',fontSize:11,color:'#9CA3AF',
+              fontWeight:500,whiteSpace:'nowrap',flexShrink:0,
+              opacity: hov ? 0 : 1,
+            }}
+          >
+            {relTime(n.time)}
+          </span>
+        </div>
+
+        {/* ── Row 2: Title ── */}
+        <div style={{
+          fontSize:13,
+          fontWeight: n.read ? 500 : 700,
+          color: n.read ? '#4B5563' : '#111827',
+          lineHeight:1.4,marginBottom:5,
+          paddingLeft: n.read ? 0 : 12,
+          overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',
+        }}>
+          {TITLE_FN[n.type](n.nv)}
+        </div>
+
+        {/* ── Row 3: Code + Sender ── */}
+        <div style={{
+          display:'flex',alignItems:'center',gap:8,
+          paddingLeft: n.read ? 0 : 12,
+        }}>
+          <a href="#" onClick={e=>e.preventDefault()} style={{
+            fontSize:11,fontWeight:700,color:'#15674C',textDecoration:'none',
+            display:'inline-flex',alignItems:'center',gap:3,
+            overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'65%',
+          }}>
+            <IDoc/>{n.code}
+          </a>
+          {n.sender && (
+            <span style={{fontSize:11,color:'#9CA3AF',display:'flex',
+              alignItems:'center',gap:3,flexShrink:0}}>
+              <IUser/>{n.sender}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Floating actions on hover ── */}
+      <div
+        className="item-actions"
+        style={{
+          position:'absolute',top:9,right:12,
+          display:'flex',alignItems:'center',gap:4,
+          opacity: hov ? 1 : 0,
+          transform: hov ? 'translateX(0)' : 'translateX(8px)',
+          pointerEvents: hov ? 'auto' : 'none',
+        }}
+      >
+        {/* Xem */}
+        <button
+          style={{
+            display:'flex',alignItems:'center',gap:4,
+            fontSize:11,fontWeight:700,color:'#fff',
+            background:'#15674C',border:'none',
+            borderRadius:6,padding:'5px 11px',cursor:'pointer',
+            transition:'background .12s',
+          }}
+          onMouseEnter={e=>e.currentTarget.style.background='#0D4A36'}
+          onMouseLeave={e=>e.currentTarget.style.background='#15674C'}
+        >
+          <ILink/>Xem
+        </button>
+        {/* Đã đọc – chỉ hiện khi chưa đọc */}
+        {!n.read && (
+          <button
+            onClick={()=>onMarkRead(n.id)}
+            title="Đánh dấu đã đọc"
+            style={{
+              width:28,height:28,borderRadius:6,
+              border:'1px solid #A8D5C2',
+              background:'#E1F0EB',color:'#15674C',cursor:'pointer',
+              display:'flex',alignItems:'center',justifyContent:'center',
+              transition:'background .12s',
+            }}
+            onMouseEnter={e=>e.currentTarget.style.background='#C5E8D8'}
+            onMouseLeave={e=>e.currentTarget.style.background='#E1F0EB'}
+          >
+            <ICheck/>
+          </button>
+        )}
+        {/* Xóa */}
+        <button
+          onClick={()=>onRemove(n.id)}
+          title="Xóa thông báo"
+          style={{
+            width:28,height:28,borderRadius:6,
+            border:'1px solid #FECACA',
+            background:'#FEF2F2',color:'#DC2626',cursor:'pointer',
+            display:'flex',alignItems:'center',justifyContent:'center',
+            transition:'background .12s',
+          }}
+          onMouseEnter={e=>e.currentTarget.style.background='#FEE2E2'}
+          onMouseLeave={e=>e.currentTarget.style.background='#FEF2F2'}
+        >
+          <ITrash/>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   SECTION LABEL (sticky)
+══════════════════════════════════════════ */
+function SectionLabel({label}) {
+  return (
+    <div style={{
+      padding:'10px 16px 7px',
+      fontSize:10,fontWeight:800,color:'#9CA3AF',
+      letterSpacing:'.1em',textTransform:'uppercase',
+      background:'#F9FAFB',borderBottom:'1px solid #EFEFEF',
+      display:'flex',alignItems:'center',gap:10,
+      position:'sticky',top:0,zIndex:2,
+    }}>
+      <span style={{flexShrink:0}}>{label}</span>
+      <div style={{flex:1,height:1,background:'#EBEBEB'}}/>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   EMPTY STATE
+══════════════════════════════════════════ */
+function EmptyState({isFiltered, onClear}) {
+  return (
+    <div style={{
+      display:'flex',flexDirection:'column',alignItems:'center',
+      justifyContent:'center',height:'100%',padding:'48px 24px',textAlign:'center',
+    }}>
+      <div style={{
+        width:52,height:52,borderRadius:14,
+        background:'#F3F4F6',
+        display:'flex',alignItems:'center',justifyContent:'center',
+        marginBottom:14,fontSize:24,
+      }}>
+        🔔
+      </div>
+      <div style={{fontSize:13,fontWeight:700,color:'#374151',marginBottom:6}}>
+        {isFiltered ? 'Không tìm thấy kết quả' : 'Không có thông báo mới'}
+      </div>
+      <div style={{fontSize:12,color:'#9CA3AF',lineHeight:1.7,maxWidth:220}}>
+        {isFiltered
+          ? 'Thử từ khóa khác hoặc đổi bộ lọc'
+          : 'Bạn đã xem tất cả thông báo rồi 🎉'}
+      </div>
+      {isFiltered && (
+        <button
+          onClick={onClear}
+          style={{
+            marginTop:14,fontSize:12,fontWeight:700,color:'#15674C',
+            background:'#E1F0EB',border:'none',borderRadius:7,
+            padding:'7px 18px',cursor:'pointer',transition:'background .12s',
+          }}
+          onMouseEnter={e=>e.currentTarget.style.background='#C5E8D8'}
+          onMouseLeave={e=>e.currentTarget.style.background='#E1F0EB'}
+        >
+          Xóa bộ lọc
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   MAIN PANEL
+══════════════════════════════════════════ */
+function NotifPanel() {
+  const [data,   setData]   = React.useState(RAW);
+  const [search, setSearch] = React.useState('');
+  const [tab,    setTab]    = React.useState('all');
+
+  const unread = data.filter(n => !n.read).length;
+
+  const counts = React.useMemo(() => ({
+    all:        data.length,
+    cho_duyet:  data.filter(n => n.type === 'cho_duyet').length,
+    hoan_thanh: data.filter(n => n.type === 'hoan_thanh').length,
+    quy_trinh:  data.filter(n => n.type === 'quy_trinh').length,
+  }), [data]);
+
+  const filtered = React.useMemo(() => {
+    let d = data;
+    if (tab !== 'all') d = d.filter(n => n.type === tab);
+    if (search) {
+      const q = search.toLowerCase();
+      d = d.filter(n =>
+        n.nv.toLowerCase().includes(q) ||
+        n.code.toLowerCase().includes(q) ||
+        (n.sender || '').toLowerCase().includes(q)
+      );
+    }
+    return d;
+  }, [data, tab, search]);
+
+  const grouped = React.useMemo(() => {
+    const map = {};
+    filtered.forEach(n => {
+      const k = groupKey(n.time);
+      if (!map[k]) map[k] = [];
+      map[k].push(n);
+    });
+    return GROUP_ORDER.filter(k => map[k]).map(k => ({label: k, items: map[k]}));
+  }, [filtered]);
+
+  const markAll  = () => setData(d => d.map(n => ({...n, read: true})));
+  const markRead = id => setData(d => d.map(n => n.id === id ? {...n, read: true} : n));
+  const remove   = id => setData(d => d.filter(n => n.id !== id));
+
+  const isFiltered = !!(search || tab !== 'all');
+
+  return (
+    <div style={{
+      position:'absolute', right:0, top:0, bottom:0, width:460,
+      background:'#fff', display:'flex', flexDirection:'column',
+      boxShadow:'-8px 0 48px rgba(0,0,0,.18)',
+      fontFamily:"'Plus Jakarta Sans',sans-serif",
+    }}>
+
+      {/* ════ HEADER ════ */}
+      <div style={{padding:'14px 16px 0', flexShrink:0, borderBottom:'1px solid #F0F0F0'}}>
+
+        {/* Top row: Bell + Title + Actions */}
+        <div style={{display:'flex', alignItems:'center', gap:9, marginBottom:12}}>
+          <div style={{
+            width:34, height:34, borderRadius:9,
+            background:'#E1F0EB', color:'#15674C',
+            display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
+          }}>
+            <IBell/>
+          </div>
+          <div>
+            <div style={{display:'flex', alignItems:'center', gap:7}}>
+              <span style={{fontSize:14, fontWeight:800, color:'#111827', letterSpacing:'-0.3px'}}>
+                THÔNG BÁO
+              </span>
+              {unread > 0 && (
+                <span style={{
+                  background:'#15674C', color:'#fff',
+                  fontSize:10, fontWeight:800, letterSpacing:'.03em',
+                  padding:'2px 8px', borderRadius:99, lineHeight:1.6,
+                }}>
+                  {unread} mới
+                </span>
+              )}
+            </div>
+            <div style={{fontSize:11, color:'#9CA3AF', marginTop:1, fontWeight:500}}>
+              {unread > 0
+                ? <span>{unread} chưa đọc · {data.length} tổng</span>
+                : <span style={{color:'#15674C', fontWeight:600}}>✓ Tất cả đã đọc</span>}
+            </div>
+          </div>
+          <div style={{marginLeft:'auto', display:'flex', gap:5, alignItems:'center'}}>
+            {unread > 0 && (
+              <button
+                onClick={markAll}
+                style={{
+                  display:'flex', alignItems:'center', gap:5,
+                  fontSize:11, fontWeight:700, color:'#15674C',
+                  background:'#E1F0EB', border:'1px solid #A8D5C2',
+                  borderRadius:7, padding:'6px 11px', cursor:'pointer',
+                  transition:'background .12s',
+                }}
+                onMouseEnter={e=>e.currentTarget.style.background='#C5E8D8'}
+                onMouseLeave={e=>e.currentTarget.style.background='#E1F0EB'}
+              >
+                <IDblChk/>Đọc tất cả
+              </button>
+            )}
+            <button style={{
+              width:30, height:30, borderRadius:7, border:'1.5px solid #E5E7EB',
+              background:'#fff', color:'#6B7280', cursor:'pointer',
+              display:'flex', alignItems:'center', justifyContent:'center',
+              transition:'background .12s',
+            }}
+              onMouseEnter={e=>e.currentTarget.style.background='#F3F4F6'}
+              onMouseLeave={e=>e.currentTarget.style.background='#fff'}
+            >
+              <IClose/>
+            </button>
+          </div>
+        </div>
+
+        {/* Search bar */}
+        <div style={{position:'relative'}}>
+          <span style={{
+            position:'absolute', left:10, top:'50%', transform:'translateY(-50%)',
+            color:'#9CA3AF', display:'flex', pointerEvents:'none',
+          }}>
+            <ISearch/>
+          </span>
+          <input
+            type="text"
+            placeholder="Tìm kiếm thông báo..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{
+              width:'100%', padding:'8px 32px 8px 32px',
+              border:'1.5px solid #E5E7EB', borderRadius:8,
+              fontSize:12, color:'#374151', background:'#F9FAFB',
+              outline:'none', transition:'border-color .15s,background .15s',
+            }}
+            onFocus={e=>{e.target.style.borderColor='#15674C';e.target.style.background='#fff'}}
+            onBlur={e=>{e.target.style.borderColor='#E5E7EB';e.target.style.background='#F9FAFB'}}
+          />
+          {search && (
+            <button
+              onClick={()=>setSearch('')}
+              style={{
+                position:'absolute', right:8, top:'50%', transform:'translateY(-50%)',
+                background:'none', border:'none', cursor:'pointer',
+                color:'#9CA3AF', display:'flex', padding:2,
+              }}
+            >
+              <IClose/>
+            </button>
+          )}
+        </div>
+
+        {/* Tab filters */}
+        <div style={{
+          display:'flex', marginTop:8,
+          marginLeft:-16, marginRight:-16, paddingLeft:4,
+          borderTop:'1px solid #F3F4F6',
+        }}>
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              className={`tab-btn${tab === t.id ? ' active' : ''}`}
+              onClick={()=>setTab(t.id)}
+            >
+              {t.label}
+              <span style={{
+                display:'inline-block', marginLeft:5,
+                fontSize:10, fontWeight:700, lineHeight:1.5,
+                background: tab === t.id ? '#15674C' : '#F3F4F6',
+                color:      tab === t.id ? '#fff'    : '#9CA3AF',
+                padding:'0 5px', borderRadius:99,
+                transition:'background .15s, color .15s',
+              }}>
+                {counts[t.id]}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ════ LIST ════ */}
+      <div className="notif-scroll" style={{flex:1, overflowY:'auto'}}>
+        {grouped.length === 0 ? (
+          <EmptyState
+            isFiltered={isFiltered}
+            onClear={()=>{setSearch('');setTab('all')}}
+          />
+        ) : grouped.map(({label, items}) => (
+          <React.Fragment key={label}>
+            <SectionLabel label={label}/>
+            {items.map(n => (
+              <NotifItem
+                key={n.id}
+                n={n}
+                onMarkRead={markRead}
+                onRemove={remove}
+              />
+            ))}
+          </React.Fragment>
+        ))}
+      </div>
+
+      {/* ════ FOOTER ════ */}
+      <div style={{
+        padding:'9px 16px', borderTop:'1px solid #F0F0F0',
+        background:'#FAFAFA', flexShrink:0,
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+      }}>
+        <span style={{fontSize:11, color:'#9CA3AF', fontWeight:500}}>
+          {filtered.length} thông báo{isFiltered ? ' · đã lọc' : ''}
+        </span>
+        <button style={{
+          fontSize:11, fontWeight:700, color:'#15674C',
+          background:'none', border:'none', cursor:'pointer',
+          display:'flex', alignItems:'center', gap:4, padding:'4px 0',
+          transition:'opacity .12s',
+        }}
+          onMouseEnter={e=>e.currentTarget.style.opacity='.7'}
+          onMouseLeave={e=>e.currentTarget.style.opacity='1'}
+        >
+          Xem tất cả <ILink/>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   APP
+══════════════════════════════════════════ */
+function App() {
+  return (
+    <div style={{width:'100vw', height:'100vh', position:'relative', overflow:'hidden'}}>
+      <MockApex/>
+      <NotifPanel/>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

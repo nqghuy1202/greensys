@@ -1,0 +1,111 @@
+/* ============================================================
+   Notification Drawer Panel — ERP Greensys
+   Page 0 → CSS → Inline
+   Scope: #notif-root, .notif-*
+   ============================================================ */
+
+/* --- Overlay --- */
+#notif-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.34);
+  z-index: 1100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+#notif-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* --- Drawer shell --- */
+#notif-root {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 460px;
+  max-width: 100vw;
+  background: #fff;
+  z-index: 1101;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -8px 0 48px rgba(0, 0, 0, 0.18);
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  overflow: hidden;
+}
+#notif-root.open {
+  transform: translateX(0);
+}
+
+/* --- Thin scrollbar --- */
+.notif-scroll::-webkit-scrollbar { width: 3px; }
+.notif-scroll::-webkit-scrollbar-track { background: transparent; }
+.notif-scroll::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 2px; }
+.notif-scroll::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
+
+/* --- Tab buttons --- */
+.notif-tab-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6B7280;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1;
+  font-family: inherit;
+}
+.notif-tab-btn.active { color: #15674C; border-bottom-color: #15674C; }
+.notif-tab-btn:hover:not(.active) { color: #374151; }
+
+/* --- Search input placeholder --- */
+#notif-search::placeholder { color: #9CA3AF; }
+
+/* --- Item hover transitions --- */
+.notif-item .item-time    { transition: opacity 0.15s ease; }
+.notif-item .item-actions { transition: opacity 0.18s ease, transform 0.18s ease; }
+
+/* --- Status badge colors (9 loại theo globalHighLightFunction) --- */
+.ns-W { color: #F18812; background: #FFE5C7; border-color: #FECB94; }
+.ns-N { color: #31956D; background: #E1F0EA; border-color: #A8D5C2; }
+.ns-Y { color: #0C34FF; background: #DFE4FF; border-color: #A6B1FF; }
+.ns-R { color: #FB132F; background: #F4C5CB; border-color: #F8909A; }
+.ns-A { color: #9D8307; background: #DFE9A8; border-color: #C5D46E; }
+.ns-C { color: #3D403E; background: #CECFCE; border-color: #ABABAB; }
+.ns-L,.ns-F { color: #5100B2; background: #D2C2E6; border-color: #A98BD0; }
+.ns-I { color: #D100BC; background: #ECC2E8; border-color: #D98AD3; }
+.ns-O { color: #0091F7; background: #D9EFFF; border-color: #85CEFF; }
+
+/* --- Left bar colors per status --- */
+.nb-W { border-left-color: #F18812 !important; }
+.nb-N { border-left-color: #31956D !important; }
+.nb-Y { border-left-color: #0C34FF !important; }
+.nb-R { border-left-color: #FB132F !important; }
+.nb-A { border-left-color: #9D8307 !important; }
+.nb-C { border-left-color: #3D403E !important; }
+.nb-L,.nb-F { border-left-color: #5100B2 !important; }
+.nb-I { border-left-color: #D100BC !important; }
+.nb-O { border-left-color: #0091F7 !important; }
+
+/* --- Unread dot colors per status --- */
+.nd-W { background: #F18812; }
+.nd-N { background: #31956D; }
+.nd-Y { background: #0C34FF; }
+.nd-R { background: #FB132F; }
+.nd-A { background: #9D8307; }
+.nd-C { background: #3D403E; }
+.nd-L,.nd-F { background: #5100B2; }
+.nd-I { background: #D100BC; }
+.nd-O { background: #0091F7; }
+
+@media (max-width: 480px) {
+  #notif-root { width: 100vw; }
+}

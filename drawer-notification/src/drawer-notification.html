@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drawer Thông Báo — UI Preview</title>
+  <link rel="stylesheet" href="drawer-notification.css" />
+</head>
+<body>
+
+<!-- ============================================================
+     DEMO TRIGGER — mô phỏng notification bell trên APEX header
+     ============================================================ -->
+<header class="demo-header">
+  <span class="demo-logo">ERP Greensys</span>
+  <div class="demo-header-actions">
+    <button type="button" class="notif-bell-btn" id="notifBellBtn" aria-label="Thông báo" aria-expanded="false">
+      <svg class="notif-bell-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+      </svg>
+      <span class="notif-badge" id="notifBadge">5</span>
+    </button>
+    <div class="demo-avatar">HG</div>
+  </div>
+</header>
+
+<!-- ============================================================
+     OVERLAY — đóng drawer khi click ngoài
+     ============================================================ -->
+<div class="notif-overlay" id="notifOverlay"></div>
+
+<!-- ============================================================
+     NOTIFICATION DRAWER
+     ============================================================ -->
+<aside class="notif-drawer" id="notifDrawer" aria-label="Thông báo" aria-hidden="true">
+
+  <!-- Header -->
+  <div class="notif-drawer-header">
+    <div class="notif-drawer-title">
+      <h2>Thông báo</h2>
+      <span class="notif-count-chip" id="notifCountChip">5 chưa đọc</span>
+    </div>
+    <div class="notif-drawer-actions">
+      <button type="button" class="notif-text-btn" id="markAllReadBtn" title="Đánh dấu tất cả là đã đọc">
+        Đọc tất cả
+      </button>
+      <button type="button" class="notif-icon-btn notif-close-btn" id="notifCloseBtn" aria-label="Đóng">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Filter tabs -->
+  <div class="notif-tabs" role="tablist">
+    <button type="button" class="notif-tab active" role="tab" aria-selected="true" data-tab="all">Tất cả</button>
+    <button type="button" class="notif-tab" role="tab" aria-selected="false" data-tab="unread">Chưa đọc</button>
+    <button type="button" class="notif-tab" role="tab" aria-selected="false" data-tab="mention">Nhắc đến tôi</button>
+  </div>
+
+  <!-- List -->
+  <div class="notif-list" id="notifList" role="list">
+
+    <!-- Item: unread — chat message -->
+    <div class="notif-item unread" role="listitem" data-id="1">
+      <div class="notif-item-avatar chat">
+        <span>TL</span>
+      </div>
+      <div class="notif-item-body">
+        <div class="notif-item-top">
+          <span class="notif-item-sender">Trần Linh</span>
+          <span class="notif-item-time">2 phút trước</span>
+        </div>
+        <p class="notif-item-text">Bạn có tin nhắn mới trong cuộc trò chuyện <strong>Nhóm Kế Toán</strong></p>
+        <span class="notif-item-tag chat-tag">Tin nhắn</span>
+      </div>
+      <div class="notif-item-side">
+        <span class="notif-unread-dot"></span>
+        <button type="button" class="notif-item-more" aria-label="Tùy chọn">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Item: unread — SO approval -->
+    <div class="notif-item unread" role="listitem" data-id="2">
+      <div class="notif-item-avatar approval">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+          <polyline points="10 9 9 9 8 9"/>
+        </svg>
+      </div>
+      <div class="notif-item-body">
+        <div class="notif-item-top">
+          <span class="notif-item-sender">Hệ thống</span>
+          <span class="notif-item-time">15 phút trước</span>
+        </div>
+        <p class="notif-item-text">Đơn hàng <strong>SO-2601/042</strong> đang chờ bạn phê duyệt</p>
+        <div class="notif-item-actions">
+          <button type="button" class="notif-action-btn primary">Xem đơn hàng</button>
+          <button type="button" class="notif-action-btn">Bỏ qua</button>
+        </div>
+      </div>
+      <div class="notif-item-side">
+        <span class="notif-unread-dot"></span>
+        <button type="button" class="notif-item-more" aria-label="Tùy chọn">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Item: unread — mention -->
+    <div class="notif-item unread" role="listitem" data-id="3">
+      <div class="notif-item-avatar mention">
+        <span>NM</span>
+      </div>
+      <div class="notif-item-body">
+        <div class="notif-item-top">
+          <span class="notif-item-sender">Nguyễn Minh</span>
+          <span class="notif-item-time">1 giờ trước</span>
+        </div>
+        <p class="notif-item-text">Đã nhắc đến bạn: <em>"@HG bạn check lại PXK-2601/018 giúp mình nhé"</em></p>
+        <span class="notif-item-tag mention-tag">Nhắc đến</span>
+      </div>
+      <div class="notif-item-side">
+        <span class="notif-unread-dot"></span>
+        <button type="button" class="notif-item-more" aria-label="Tùy chọn">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Item: unread — task assigned -->
+    <div class="notif-item unread" role="listitem" data-id="4">
+      <div class="notif-item-avatar task">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 11l3 3L22 4"/>
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+        </svg>
+      </div>
+      <div class="notif-item-body">
+        <div class="notif-item-top">
+          <span class="notif-item-sender">Lê Hoa</span>
+          <span class="notif-item-time">3 giờ trước</span>
+        </div>
+        <p class="notif-item-text">Đã giao cho bạn công việc: <strong>Kiểm tra tồn kho Q1/2026</strong></p>
+        <span class="notif-item-tag task-tag">Công việc</span>
+      </div>
+      <div class="notif-item-side">
+        <span class="notif-unread-dot"></span>
+        <button type="button" class="notif-item-more" aria-label="Tùy chọn">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Item: unread — system alert -->
+    <div class="notif-item unread" role="listitem" data-id="5">
+      <div class="notif-item-avatar alert">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </div>
+      <div class="notif-item-body">
+        <div class="notif-item-top">
+          <span class="notif-item-sender">Cảnh báo hệ thống</span>
+          <span class="notif-item-time">5 giờ trước</span>
+        </div>
+        <p class="notif-item-text">Hết hạn hợp đồng NCC <strong>Công ty TNHH Minh Phát</strong> trong 7 ngày</p>
+        <span class="notif-item-tag alert-tag">Cảnh báo</span>
+      </div>
+      <div class="notif-item-side">
+        <span class="notif-unread-dot"></span>
+        <button type="button" class="notif-item-more" aria-label="Tùy chọn">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Divider: Đã đọc -->
+    <div class="notif-section-divider">Đã đọc</div>
+
+    <!-- Item: read — chat -->
+    <div class="notif-item read" role="listitem" data-id="6">
+      <div class="notif-item-avatar chat">
+        <span>PH</span>
+      </div>
+      <div class="notif-item-body">
+        <div class="notif-item-top">
+          <span class="notif-item-sender">Phạm Hùng</span>
+          <span class="notif-item-time">Hôm qua, 17:30</span>
+        </div>
+        <p class="notif-item-text">Đã gửi file <strong>Báo cáo tháng 5.xlsx</strong> trong cuộc trò chuyện</p>
+        <span class="notif-item-tag chat-tag">Tin nhắn</span>
+      </div>
+      <div class="notif-item-side">
+        <button type="button" class="notif-item-more" aria-label="Tùy chọn">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Item: read — approval done -->
+    <div class="notif-item read" role="listitem" data-id="7">
+      <div class="notif-item-avatar approval">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+      </div>
+      <div class="notif-item-body">
+        <div class="notif-item-top">
+          <span class="notif-item-sender">Giám đốc Trần</span>
+          <span class="notif-item-time">Hôm qua, 14:10</span>
+        </div>
+        <p class="notif-item-text">Đã duyệt đơn hàng <strong>SO-2601/038</strong> của bạn</p>
+        <span class="notif-item-tag approval-tag">Phê duyệt</span>
+      </div>
+      <div class="notif-item-side">
+        <button type="button" class="notif-item-more" aria-label="Tùy chọn">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+  </div><!-- /notif-list -->
+
+  <!-- Footer -->
+  <div class="notif-drawer-footer">
+    <button type="button" class="notif-footer-btn">Xem tất cả thông báo</button>
+  </div>
+
+</aside><!-- /notif-drawer -->
+
+<!-- ============================================================
+     DEMO SCRIPT — toggle drawer (thay bằng DA trong APEX)
+     ============================================================ -->
+<script>
+(function () {
+  var bell    = document.getElementById('notifBellBtn');
+  var drawer  = document.getElementById('notifDrawer');
+  var overlay = document.getElementById('notifOverlay');
+  var close   = document.getElementById('notifCloseBtn');
+  var tabs    = document.querySelectorAll('.notif-tab');
+  var markAll = document.getElementById('markAllReadBtn');
+
+  function openDrawer() {
+    drawer.classList.add('open');
+    overlay.classList.add('active');
+    bell.setAttribute('aria-expanded', 'true');
+    drawer.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeDrawer() {
+    drawer.classList.remove('open');
+    overlay.classList.remove('active');
+    bell.setAttribute('aria-expanded', 'false');
+    drawer.setAttribute('aria-hidden', 'true');
+  }
+
+  bell.addEventListener('click', function () {
+    drawer.classList.contains('open') ? closeDrawer() : openDrawer();
+  });
+
+  overlay.addEventListener('click', closeDrawer);
+  close.addEventListener('click', closeDrawer);
+
+  // Tabs
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      tabs.forEach(function (t) { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
+      tab.classList.add('active');
+      tab.setAttribute('aria-selected', 'true');
+    });
+  });
+
+  // Mark all read
+  markAll.addEventListener('click', function () {
+    document.querySelectorAll('.notif-item.unread').forEach(function (item) {
+      item.classList.remove('unread');
+      item.classList.add('read');
+      var dot = item.querySelector('.notif-unread-dot');
+      if (dot) dot.remove();
+    });
+    document.getElementById('notifBadge').textContent = '0';
+    document.getElementById('notifCountChip').textContent = '0 chưa đọc';
+  });
+})();
+</script>
+
+</body>
+</html>

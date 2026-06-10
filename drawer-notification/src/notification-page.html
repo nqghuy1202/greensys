@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Thông Báo</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+
+/* ── Reset ────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Plus Jakarta Sans',system-ui,sans-serif;
+  background:#F0F2F5;
+  color:#111827;
+  min-height:100vh;
+}
+button,input{font-family:inherit}
+a{text-decoration:none}
+
+/* ── Page wrapper ─────────────────────────────────────────── */
+.np-page{
+  max-width:660px;
+  margin:0 auto;
+  padding:24px 16px 48px;
+}
+
+/* ══════════════════════════════════════════════════
+   HEADER
+══════════════════════════════════════════════════ */
+.np-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  margin-bottom:20px;
+  gap:12px;
+}
+.np-header-left{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+.np-header-icon{
+  width:42px;height:42px;
+  border-radius:11px;
+  background:#E1F0EB;
+  color:#15674C;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.np-header-icon svg{width:20px;height:20px}
+.np-title{
+  font-size:18px;font-weight:800;
+  color:#111827;letter-spacing:-.4px;
+  line-height:1.2;
+}
+.np-subtitle{
+  font-size:12px;color:#6B7280;font-weight:500;
+  margin-top:2px;
+}
+.np-subtitle strong{color:#15674C;font-weight:700}
+
+/* Stats chips */
+.np-stats{
+  display:flex;gap:6px;flex-wrap:wrap;
+}
+.np-stat{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:11px;font-weight:700;
+  padding:5px 10px;border-radius:99px;
+  border:1px solid;
+}
+.np-stat-unread{color:#15674C;background:#E1F0EB;border-color:#A8D5C2}
+.np-stat-total {color:#6B7280;background:#F3F4F6;border-color:#E5E7EB}
+.np-stat svg{width:12px;height:12px}
+
+/* ══════════════════════════════════════════════════
+   SEARCH
+══════════════════════════════════════════════════ */
+.np-search-wrap{
+  position:relative;
+  margin-bottom:4px;
+}
+.np-search-icon{
+  position:absolute;left:11px;top:50%;transform:translateY(-50%);
+  color:#9CA3AF;display:flex;pointer-events:none;
+}
+.np-search-icon svg{width:14px;height:14px}
+.np-search{
+  width:100%;
+  padding:9px 12px 9px 34px;
+  border:1.5px solid #E5E7EB;
+  border-radius:9px;
+  font-size:13px;color:#374151;
+  background:#fff;
+  outline:none;
+  transition:border-color .15s,box-shadow .15s;
+}
+.np-search:focus{
+  border-color:#15674C;
+  box-shadow:0 0 0 3px rgba(21,103,76,.1);
+}
+.np-search::placeholder{color:#9CA3AF}
+
+/* ══════════════════════════════════════════════════
+   TABS
+══════════════════════════════════════════════════ */
+.np-tabs-wrap{
+  margin-bottom:16px;
+  border-bottom:1px solid #E5E7EB;
+}
+.np-tabs{
+  display:flex;gap:0;
+  overflow-x:auto;
+  scrollbar-width:none;
+  padding-bottom:0;
+}
+.np-tabs::-webkit-scrollbar{display:none}
+.np-tab{
+  flex-shrink:0;
+  background:none;border:none;cursor:pointer;
+  padding:10px 14px;
+  font-size:12px;font-weight:600;color:#6B7280;
+  border-bottom:2px solid transparent;
+  margin-bottom:-1px;
+  transition:color .15s,border-color .15s;
+  display:inline-flex;align-items:center;gap:6px;
+  white-space:nowrap;
+}
+.np-tab:hover:not(.active){color:#374151}
+.np-tab.active{color:#15674C;border-bottom-color:#15674C}
+
+.np-tab-count{
+  font-size:10px;font-weight:700;line-height:1.5;
+  padding:0 5px;border-radius:99px;
+  background:#F3F4F6;color:#9CA3AF;
+  transition:background .15s,color .15s;
+}
+.np-tab.active .np-tab-count{
+  background:#15674C;color:#fff;
+}
+
+/* ══════════════════════════════════════════════════
+   SECTION LABEL
+══════════════════════════════════════════════════ */
+.np-section{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 0 7px;
+}
+.np-section-label{
+  font-size:10px;font-weight:800;color:#9CA3AF;
+  letter-spacing:.1em;text-transform:uppercase;
+  white-space:nowrap;flex-shrink:0;
+}
+.np-section-line{
+  flex:1;height:1px;background:#E5E7EB;
+}
+
+/* ══════════════════════════════════════════════════
+   NOTIFICATION CARD
+══════════════════════════════════════════════════ */
+.np-card{
+  position:relative;
+  background:#fff;
+  border:1px solid #E5E7EB;
+  border-left:3px solid #E5E7EB;
+  border-radius:10px;
+  margin-bottom:6px;
+  overflow:hidden;
+  transition:box-shadow .15s,border-color .15s;
+  cursor:pointer;
+}
+.np-card:hover{
+  box-shadow:0 2px 12px rgba(0,0,0,.08);
+}
+.np-card.unread{
+  border-left-color:var(--status-dot);
+  background:#FAFDF9;
+}
+.np-card.unread:hover{
+  background:#F4FBF7;
+}
+
+.np-card-inner{
+  padding:12px 14px 11px;
+}
+
+/* Row 1: badge + dot + time */
+.np-card-row1{
+  display:flex;align-items:center;gap:6px;
+  margin-bottom:6px;
+}
+.np-unread-dot{
+  width:6px;height:6px;border-radius:50%;
+  background:var(--status-dot);
+  flex-shrink:0;
+}
+.np-badge{
+  font-size:10px;font-weight:700;letter-spacing:.02em;
+  padding:2px 9px;border-radius:99px;
+  border:1px solid;
+  flex-shrink:0;
+}
+.np-time{
+  margin-left:auto;
+  font-size:11px;color:#9CA3AF;font-weight:500;
+  white-space:nowrap;flex-shrink:0;
+}
+
+/* Row 2: title */
+.np-card-title{
+  font-size:13px;line-height:1.45;
+  margin-bottom:6px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  padding-left:12px;
+}
+.np-card.unread  .np-card-title{font-weight:700;color:#111827}
+.np-card:not(.unread) .np-card-title{
+  font-weight:500;color:#4B5563;padding-left:0;
+}
+
+/* Row 3: doc + sender */
+.np-card-meta{
+  display:flex;align-items:center;gap:8px;
+  padding-left:12px;
+}
+.np-card:not(.unread) .np-card-meta{padding-left:0}
+
+.np-doc-link{
+  font-size:11px;font-weight:700;color:#15674C;
+  display:inline-flex;align-items:center;gap:3px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  max-width:60%;
+}
+.np-doc-link svg{width:11px;height:11px;flex-shrink:0}
+.np-doc-link:hover{text-decoration:underline}
+
+.np-sender{
+  font-size:11px;color:#9CA3AF;
+  display:inline-flex;align-items:center;gap:3px;
+  flex-shrink:0;
+}
+.np-sender svg{width:11px;height:11px}
+
+/* Hover actions */
+.np-card-actions{
+  position:absolute;top:10px;right:12px;
+  display:flex;align-items:center;gap:4px;
+  opacity:0;
+  transform:translateX(6px);
+  transition:opacity .18s,transform .18s;
+  pointer-events:none;
+}
+.np-card:hover .np-card-actions{
+  opacity:1;
+  transform:translateX(0);
+  pointer-events:auto;
+}
+
+.np-btn-view{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:11px;font-weight:700;color:#fff;
+  background:#15674C;border:none;
+  border-radius:6px;padding:5px 11px;
+  cursor:pointer;transition:background .12s;
+  white-space:nowrap;
+}
+.np-btn-view:hover{background:#0D4A36}
+.np-btn-view svg{width:11px;height:11px}
+
+.np-btn-icon{
+  width:28px;height:28px;border-radius:6px;
+  border:1px solid;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .12s;
+}
+.np-btn-icon svg{width:12px;height:12px}
+
+.np-btn-read{
+  border-color:#A8D5C2;background:#E1F0EB;color:#15674C;
+}
+.np-btn-read:hover{background:#C5E8D8}
+
+.np-btn-del{
+  border-color:#FECACA;background:#FEF2F2;color:#DC2626;
+}
+.np-btn-del:hover{background:#FEE2E2}
+
+/* ══════════════════════════════════════════════════
+   STATUS COLORS  (9 loại — từ globalHighLightFunction)
+══════════════════════════════════════════════════ */
+.s-W{--status-dot:#F18812;--s-c:#F18812;--s-bg:#FFE5C7;--s-bd:#FECB94}
+.s-N{--status-dot:#31956D;--s-c:#31956D;--s-bg:#E1F0EA;--s-bd:#A8D5C2}
+.s-Y{--status-dot:#0C34FF;--s-c:#0C34FF;--s-bg:#DFE4FF;--s-bd:#A6B1FF}
+.s-R{--status-dot:#FB132F;--s-c:#FB132F;--s-bg:#F4C5CB;--s-bd:#F8909A}
+.s-A{--status-dot:#9D8307;--s-c:#9D8307;--s-bg:#DFE9A8;--s-bd:#C5D46E}
+.s-C{--status-dot:#3D403E;--s-c:#3D403E;--s-bg:#CECFCE;--s-bd:#ABABAB}
+.s-L,.s-F{--status-dot:#5100B2;--s-c:#5100B2;--s-bg:#D2C2E6;--s-bd:#A98BD0}
+.s-I{--status-dot:#D100BC;--s-c:#D100BC;--s-bg:#ECC2E8;--s-bd:#D98AD3}
+.s-O{--status-dot:#0091F7;--s-c:#0091F7;--s-bg:#D9EFFF;--s-bd:#85CEFF}
+
+.np-badge{color:var(--s-c);background:var(--s-bg);border-color:var(--s-bd)}
+
+/* ══════════════════════════════════════════════════
+   EMPTY STATE
+══════════════════════════════════════════════════ */
+.np-empty{
+  display:flex;flex-direction:column;align-items:center;
+  padding:56px 24px;text-align:center;
+}
+.np-empty-icon{
+  width:52px;height:52px;border-radius:14px;
+  background:#F3F4F6;
+  display:flex;align-items:center;justify-content:center;
+  font-size:24px;margin-bottom:14px;
+}
+.np-empty-title{
+  font-size:13px;font-weight:700;color:#374151;margin-bottom:5px;
+}
+.np-empty-sub{
+  font-size:12px;color:#9CA3AF;line-height:1.7;max-width:220px;
+}
+
+/* ══════════════════════════════════════════════════
+   SCROLLBAR (list)
+══════════════════════════════════════════════════ */
+.np-list::-webkit-scrollbar{width:3px}
+.np-list::-webkit-scrollbar-track{background:transparent}
+.np-list::-webkit-scrollbar-thumb{background:#D1D5DB;border-radius:2px}
+
+/* ══════════════════════════════════════════════════
+   DEMO APEX SHELL  (xóa khi paste vào APEX)
+══════════════════════════════════════════════════ */
+.demo-shell{
+  background:#fff;border-bottom:1px solid #E5E7EB;
+  height:50px;display:flex;align-items:center;
+  padding:0 20px;gap:10px;margin-bottom:0;
+  position:sticky;top:0;z-index:10;
+}
+.demo-logo{
+  width:28px;height:28px;border-radius:7px;
+  background:#15674C;
+  display:flex;align-items:center;justify-content:center;
+}
+.demo-logo svg{width:14px;height:14px}
+.demo-app-name{font-size:12px;font-weight:800;color:#111827}
+.demo-nav{display:flex;gap:1px;padding-left:8px;flex:1}
+.demo-nav-item{
+  font-size:11px;font-weight:600;padding:4px 10px;border-radius:5px;
+  color:#9CA3AF;
+}
+.demo-nav-item.active{background:#E1F0EB;color:#15674C}
+.demo-avatar{
+  width:30px;height:30px;border-radius:50%;
+  background:linear-gradient(135deg,#15674C,#1B8560);
+  color:#fff;display:flex;align-items:center;
+  justify-content:center;font-size:11px;font-weight:800;
+}
+
+</style>
+</head>
+<body>
+
+<!-- DEMO APEX SHELL — xóa khi paste vào APEX ──────────────── -->
+<div class="demo-shell">
+  <div class="demo-logo">
+    <svg viewBox="0 0 24 24" fill="white"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+  </div>
+  <span class="demo-app-name">ERP Greensys</span>
+  <div class="demo-nav">
+    <span class="demo-nav-item">Dashboard</span>
+    <span class="demo-nav-item">Mua hàng</span>
+    <span class="demo-nav-item">Kho</span>
+    <span class="demo-nav-item active">Thông báo</span>
+    <span class="demo-nav-item">Nhân sự</span>
+  </div>
+  <div class="demo-avatar">TT</div>
+</div>
+<!-- /DEMO APEX SHELL ──────────────────────────────────────── -->
+
+
+<!-- ════════════════════════════════════════════════════════
+     NỘI DUNG CHÍNH — paste vào Content Row của APEX
+════════════════════════════════════════════════════════ -->
+<div class="np-page">
+
+  <!-- ── Header ── -->
+  <div class="np-header">
+    <div class="np-header-left">
+      <div class="np-header-icon">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+        </svg>
+      </div>
+      <div>
+        <div class="np-title">Thông báo</div>
+        <div class="np-subtitle"><strong>4 chưa đọc</strong> · 12 tổng</div>
+      </div>
+    </div>
+    <div class="np-stats">
+      <span class="np-stat np-stat-unread">
+        <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>
+        4 chưa đọc
+      </span>
+      <span class="np-stat np-stat-total">12 tổng</span>
+    </div>
+  </div>
+
+  <!-- ── Search ── -->
+  <div class="np-search-wrap">
+    <span class="np-search-icon">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+    </span>
+    <input type="text" class="np-search" placeholder="Tìm kiếm theo tên nghiệp vụ, số chứng từ..."/>
+  </div>
+
+  <!-- ── Tabs ── -->
+  <div class="np-tabs-wrap">
+    <div class="np-tabs">
+      <button type="button" class="np-tab active">
+        Tất cả <span class="np-tab-count">12</span>
+      </button>
+      <button type="button" class="np-tab">
+        Chờ duyệt <span class="np-tab-count">4</span>
+      </button>
+      <button type="button" class="np-tab">
+        Đã duyệt <span class="np-tab-count">3</span>
+      </button>
+      <button type="button" class="np-tab">
+        Đang xử lý <span class="np-tab-count">2</span>
+      </button>
+      <button type="button" class="np-tab">
+        Từ chối <span class="np-tab-count">1</span>
+      </button>
+      <button type="button" class="np-tab">
+        Bổ sung <span class="np-tab-count">2</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════
+       LIST
+  ════════════════════════════════ -->
+  <div class="np-list">
+
+    <!-- ── HÔM NAY ── -->
+    <div class="np-section">
+      <span class="np-section-label">Hôm nay</span>
+      <div class="np-section-line"></div>
+    </div>
+
+    <!-- Card 1: Chờ duyệt, chưa đọc -->
+    <div class="np-card unread s-W">
+      <div class="np-card-inner">
+        <div class="np-card-row1">
+          <span class="np-unread-dot"></span>
+          <span class="np-badge">Chờ duyệt</span>
+          <span class="np-time">90 phút trước</span>
+        </div>
+        <div class="np-card-title">Đề nghị thủ công</div>
+        <div class="np-card-meta">
+          <a href="#" class="np-doc-link" onclick="return false">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            DN05/0626-01
+          </a>
+        </div>
+      </div>
+      <div class="np-card-actions">
+        <button type="button" class="np-btn-view">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+          Xem
+        </button>
+        <button type="button" class="np-btn-icon np-btn-read" title="Đánh dấu đã đọc">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+        </button>
+        <button type="button" class="np-btn-icon np-btn-del" title="Xóa">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Card 2: Quy trình / Đang xử lý, chưa đọc -->
+    <div class="np-card unread s-O">
+      <div class="np-card-inner">
+        <div class="np-card-row1">
+          <span class="np-unread-dot"></span>
+          <span class="np-badge">Đang xử lý</span>
+          <span class="np-time">3 giờ trước</span>
+        </div>
+        <div class="np-card-title">Hợp đồng dịch vụ</div>
+        <div class="np-card-meta">
+          <a href="#" class="np-doc-link" onclick="return false">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            HD-SVC-2026/031
+          </a>
+          <span class="np-sender">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            admin.hr
+          </span>
+        </div>
+      </div>
+      <div class="np-card-actions">
+        <button type="button" class="np-btn-view">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+          Xem
+        </button>
+        <button type="button" class="np-btn-icon np-btn-read" title="Đánh dấu đã đọc">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+        </button>
+        <button type="button" class="np-btn-icon np-btn-del" title="Xóa">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── HÔM QUA ── -->
+    <div class="np-section">
+      <span class="np-section-label">Hôm qua</span>
+      <div class="np-section-line"></div>
+    </div>
+
+    <!-- Card 3: Đã duyệt, chưa đọc -->
+    <div class="np-card unread s-N">
+      <div class="np-card-inner">
+        <div class="np-card-row1">
+          <span class="np-unread-dot"></span>
+          <span class="np-badge">Đã duyệt</span>
+          <span class="np-time">Hôm qua, 16:45</span>
+        </div>
+        <div class="np-card-title">Đăng ký đi công tác</div>
+        <div class="np-card-meta">
+          <a href="#" class="np-doc-link" onclick="return false">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            TRS-06.26/003
+          </a>
+          <span class="np-sender">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            manhdinh.sp
+          </span>
+        </div>
+      </div>
+      <div class="np-card-actions">
+        <button type="button" class="np-btn-view">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+          Xem
+        </button>
+        <button type="button" class="np-btn-icon np-btn-read" title="Đánh dấu đã đọc">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+        </button>
+        <button type="button" class="np-btn-icon np-btn-del" title="Xóa">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Card 4: Chờ duyệt, chưa đọc -->
+    <div class="np-card unread s-W">
+      <div class="np-card-inner">
+        <div class="np-card-row1">
+          <span class="np-unread-dot"></span>
+          <span class="np-badge">Chờ duyệt</span>
+          <span class="np-time">Hôm qua, 10:00</span>
+        </div>
+        <div class="np-card-title">Phiếu chi nội bộ</div>
+        <div class="np-card-meta">
+          <a href="#" class="np-doc-link" onclick="return false">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            PCHI-06.26/005
+          </a>
+        </div>
+      </div>
+      <div class="np-card-actions">
+        <button type="button" class="np-btn-view">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+          Xem
+        </button>
+        <button type="button" class="np-btn-icon np-btn-read" title="Đánh dấu đã đọc">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+        </button>
+        <button type="button" class="np-btn-icon np-btn-del" title="Xóa">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── TUẦN TRƯỚC ── -->
+    <div class="np-section">
+      <span class="np-section-label">Tuần trước</span>
+      <div class="np-section-line"></div>
+    </div>
+
+    <!-- Card 5: Đã đọc, Đề nghị mua hàng, Đang xử lý -->
+    <div class="np-card s-O">
+      <div class="np-card-inner">
+        <div class="np-card-row1">
+          <span class="np-badge">Đang xử lý</span>
+          <span class="np-time">5 ngày trước</span>
+        </div>
+        <div class="np-card-title">Đề nghị mua hàng</div>
+        <div class="np-card-meta">
+          <a href="#" class="np-doc-link" onclick="return false">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            MH-2026-0441
+          </a>
+          <span class="np-sender">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            nguyen.van
+          </span>
+        </div>
+      </div>
+      <div class="np-card-actions">
+        <button type="button" class="np-btn-view">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+          Xem
+        </button>
+        <button type="button" class="np-btn-icon np-btn-del" title="Xóa">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── THÁNG TRƯỚC ── -->
+    <div class="np-section">
+      <span class="np-section-label">Tháng trước</span>
+      <div class="np-section-line"></div>
+    </div>
+
+    <!-- Card 6: Đã đọc, Chờ duyệt -->
+    <div class="np-card s-W">
+      <div class="np-card-inner">
+        <div class="np-card-row1">
+          <span class="np-badge">Chờ duyệt</span>
+          <span class="np-time">21 ngày trước</span>
+        </div>
+        <div class="np-card-title">Quyết toán công tác</div>
+        <div class="np-card-meta">
+          <a href="#" class="np-doc-link" onclick="return false">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            QT-05.26/007
+          </a>
+        </div>
+      </div>
+      <div class="np-card-actions">
+        <button type="button" class="np-btn-view">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+          Xem
+        </button>
+        <button type="button" class="np-btn-icon np-btn-del" title="Xóa">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Card 7: Đã đọc, Đã duyệt, Đề nghị tạm ứng lương -->
+    <div class="np-card s-N">
+      <div class="np-card-inner">
+        <div class="np-card-row1">
+          <span class="np-badge">Đã duyệt</span>
+          <span class="np-time">26 ngày trước</span>
+        </div>
+        <div class="np-card-title">Đề nghị tạm ứng lương</div>
+        <div class="np-card-meta">
+          <a href="#" class="np-doc-link" onclick="return false">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            DNU-1223/0005
+          </a>
+          <span class="np-sender">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            support.gc
+          </span>
+        </div>
+      </div>
+      <div class="np-card-actions">
+        <button type="button" class="np-btn-view">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+          Xem
+        </button>
+        <button type="button" class="np-btn-icon np-btn-del" title="Xóa">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Card 8: Từ chối -->
+    <div class="np-card s-R">
+      <div class="np-card-inner">
+        <div class="np-card-row1">
+          <span class="np-badge">Từ chối</span>
+          <span class="np-time">1 tháng trước</span>
+        </div>
+        <div class="np-card-title">Đề nghị tạm ứng mua hàng</div>
+        <div class="np-card-meta">
+          <a href="#" class="np-doc-link" onclick="return false">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            DNU-1124/0001
+          </a>
+        </div>
+      </div>
+      <div class="np-card-actions">
+        <button type="button" class="np-btn-view">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+          Xem
+        </button>
+        <button type="button" class="np-btn-icon np-btn-del" title="Xóa">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Card 9: Bổ sung -->
+    <div class="np-card s-L">
+      <div class="np-card-inner">
+        <div class="np-card-row1">
+          <span class="np-badge">Bổ sung</span>
+          <span class="np-time">1 tháng trước</span>
+        </div>
+        <div class="np-card-title">Bảng giá bán cho khách hàng</div>
+        <div class="np-card-meta">
+          <a href="#" class="np-doc-link" onclick="return false">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            SL-DRAO_CITY-0001-2508/004
+          </a>
+        </div>
+      </div>
+      <div class="np-card-actions">
+        <button type="button" class="np-btn-view">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+          Xem
+        </button>
+        <button type="button" class="np-btn-icon np-btn-del" title="Xóa">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── CŨ HƠN ── -->
+    <div class="np-section">
+      <span class="np-section-label">Cũ hơn</span>
+      <div class="np-section-line"></div>
+    </div>
+
+    <!-- Card 10: Phê duyệt (Y) -->
+    <div class="np-card s-Y">
+      <div class="np-card-inner">
+        <div class="np-card-row1">
+          <span class="np-badge">Phê duyệt</span>
+          <span class="np-time">7 tháng trước</span>
+        </div>
+        <div class="np-card-title">Điều chỉnh bảng giá vật tư dự án</div>
+        <div class="np-card-meta">
+          <a href="#" class="np-doc-link" onclick="return false">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            PL-SUPPLIER-0002.2512/001
+          </a>
+          <span class="np-sender">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            admin.sales
+          </span>
+        </div>
+      </div>
+      <div class="np-card-actions">
+        <button type="button" class="np-btn-view">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+          Xem
+        </button>
+        <button type="button" class="np-btn-icon np-btn-del" title="Xóa">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Card 11: Hết hạn (C) -->
+    <div class="np-card s-C">
+      <div class="np-card-inner">
+        <div class="np-card-row1">
+          <span class="np-badge">Hết hạn</span>
+          <span class="np-time">1 năm trước</span>
+        </div>
+        <div class="np-card-title">Khế ước vay</div>
+        <div class="np-card-meta">
+          <a href="#" class="np-doc-link" onclick="return false">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            CHUACO-21.01/002
+          </a>
+          <span class="np-sender">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            support.gc
+          </span>
+        </div>
+      </div>
+      <div class="np-card-actions">
+        <button type="button" class="np-btn-view">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+          Xem
+        </button>
+        <button type="button" class="np-btn-icon np-btn-del" title="Xóa">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Card 12: Xử lý (I) -->
+    <div class="np-card s-I">
+      <div class="np-card-inner">
+        <div class="np-card-row1">
+          <span class="np-badge">Xử lý</span>
+          <span class="np-time">1 năm trước</span>
+        </div>
+        <div class="np-card-title">Hợp đồng dịch vụ kỹ thuật</div>
+        <div class="np-card-meta">
+          <a href="#" class="np-doc-link" onclick="return false">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            HD-SVC-2025/012
+          </a>
+          <span class="np-sender">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            admin.hr
+          </span>
+        </div>
+      </div>
+      <div class="np-card-actions">
+        <button type="button" class="np-btn-view">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+          Xem
+        </button>
+        <button type="button" class="np-btn-icon np-btn-del" title="Xóa">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        </button>
+      </div>
+    </div>
+
+  </div><!-- /np-list -->
+
+</div><!-- /np-page -->
+
+</body>
+</html>

@@ -29,10 +29,11 @@ Server B — Node.js 22 (172.25.10.38:3410)
 
 | Folder | Mô tả | CLAUDE.md |
 |--------|-------|-----------|
-| `chat-server/` | Node.js backend — Express, CQN, long-poll, DB pool | `chat-server/CLAUDE.md` |
+| `chat-server/` | Node.js backend — Express, CQN, SSE, DB pool | `chat-server/CLAUDE.md` |
 | `chat-system/` | Messenger UI — APEX native, FGVD + 22 DA | `chat-system/CLAUDE.md` |
 | `doc-chat/` | Doc Chat Modal (page 10022710201) — FGVD + 19 DA | `doc-chat/CLAUDE.md` |
-| `sse-migration/` | SSE real-time upgrade — Phase 0 chờ DNS | `sse-migration/CLAUDE.md` |
+| `drawer-notification/` | Notification page UI prototype — HTML/CSS tĩnh + APEX integration | `drawer-notification/CLAUDE.md` |
+| `sse-migration/` | SSE real-time upgrade — ✅ Hoàn thành 2026-06-09 | `sse-migration/CLAUDE.md` |
 | `apex-claude-mcp/` | Vibe coding — kết nối Claude Code ↔ APEX 26 + Oracle DB | `apex-claude-mcp/CLAUDE.md` |
 | `apex-component-modifier/` | Skill gốc (fork từ avhrst) — tham khảo, chưa customize | `apex-component-modifier/CLAUDE.md` |
 
@@ -74,6 +75,7 @@ npm run test:cqn           # dừng server trước (tranh CQN_PORT 3141)
 | Doc Chat Modal (page 10022710201) | 🚧 Active |
 | SSE Migration (real-time) | ✅ Done — 4 phase hoàn thành 2026-06-09 |
 | Menu Tree IG (page 10012010203) | ✅ Done — `docs/menu-tree-ig-setup.md` |
+| Kanban Board dynamic columns | ✅ Done — `template_component_plugin_kanban_board (1).sql` |
 | CRM Module (KHTN) | 📋 Planned — `docs/crm.md` |
 
 ## Shared Docs
@@ -87,6 +89,33 @@ npm run test:cqn           # dừng server trước (tranh CQN_PORT 3141)
 | `docs/menu-tree-ig-setup.md` | Menu Tree IG setup (page 10012010203) |
 | `docs/crm.md` | CRM module context (planned) |
 | `docs/reviews/` | Review reports |
+
+## Kanban Board Plugin — Dynamic Columns
+
+Plugin `KANBAN_BOARD` (Template Component) hỗ trợ lấy cột từ DB qua AJAX.
+
+**Cơ chế:** Template Component không có PL/SQL render → columns inject qua JS sau khi page load.
+
+**Setup cho region mới:**
+1. Tạo **Application Process** `kanbanGetColumns` (dùng `APEX_JSON`, không dùng `JSON_ARRAYAGG RETURNING CLOB` — gây ORA-22922 khi empty):
+```sql
+DECLARE l_co_id NUMBER := TO_NUMBER(:G_CO_ID); BEGIN
+  IF l_co_id IS NULL THEN HTP.p('{"columns":[]}'); RETURN; END IF;
+  APEX_JSON.OPEN_OBJECT; APEX_JSON.OPEN_ARRAY('columns');
+  FOR r IN (SELECT t.value AS id, t.name AS text, NVL(t.description,'#4A90D9') AS color
+            FROM co_list_of_value t
+            WHERE t.co_id=l_co_id AND t.status='Y' AND t.code='CLE_STATUS'
+            ORDER BY t.order_by) LOOP
+    APEX_JSON.OPEN_OBJECT; APEX_JSON.WRITE('id',r.id); APEX_JSON.WRITE('text',r.text); APEX_JSON.WRITE('color',r.color); APEX_JSON.CLOSE_OBJECT;
+  END LOOP;
+  APEX_JSON.CLOSE_ARRAY; APEX_JSON.CLOSE_OBJECT;
+EXCEPTION WHEN OTHERS THEN HTP.p('{"columns":[],"error":"'||SQLERRM||'"}'); END;
+```
+2. Plugin attribute **`COLUMNSAJAX`** (REPORT scope, TEXT type, group Ajax Settings) — bỏ Required trên STATUS1 ID
+3. Region config: `Columns Ajax Process = kanbanGetColumns`, STATUS1..STATUS10 để trống
+4. `script.js` đã sửa để đọc `columnsajax` attribute, fetch trước `relocate()`
+
+**Data source columns:** `co_list_of_value` — `value`=id, `name`=text, `description`=color, `order_by`=seq
 
 @docs/oracle-db.md
 @docs/apex-patterns.md

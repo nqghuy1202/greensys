@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"/>
+<title>Notif Item</title>
+<style>
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  padding: 24px;
+  background: #F3F4F6;
+}
+
+/* ── Notification Item ────────────────────────────────────── */
+.notif-item {
+  position: relative;
+  border-bottom: 1px solid #F3F4F6;
+  border-left: 3px solid #F59E0B;       /* màu theo status */
+  background: #FAFDF9;                  /* unread bg */
+  transition: background .15s;
+}
+.notif-item:hover {
+  background: #F6FBF8;
+}
+
+.notif-item-inner {
+  padding: 10px 14px 10px 13px;
+}
+
+/* Row 1: dot + badge + title + time */
+.notif-row1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.notif-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #F59E0B;                  /* màu theo status */
+  flex-shrink: 0;
+}
+
+.notif-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: #92400E;                       /* màu theo status */
+  background: #FFFBEB;
+  border: 1px solid #FDE68A;
+  padding: 1px 8px;
+  border-radius: 99px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.notif-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notif-time {
+  font-size: 11px;
+  color: #9CA3AF;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: opacity .15s;
+}
+.notif-item:hover .notif-time {
+  opacity: 0;
+}
+
+/* Row 2: doc link + sender */
+.notif-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+}
+
+.notif-doc-link {
+  font-size: 11px;
+  font-weight: 700;
+  color: #15674C;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 55%;
+}
+.notif-doc-link:hover { text-decoration: underline; }
+.notif-doc-link svg { flex-shrink: 0; }
+
+.notif-sender {
+  font-size: 11px;
+  color: #9CA3AF;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notif-sender svg { flex-shrink: 0; }
+
+/* Hover actions */
+.notif-actions {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transform: translateX(8px);
+  pointer-events: none;
+  transition: opacity .18s, transform .18s;
+}
+.notif-item:hover .notif-actions {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.notif-btn-view {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: #15674C;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 11px;
+  cursor: pointer;
+  transition: background .12s;
+}
+.notif-btn-view:hover { background: #0D4A36; }
+
+.notif-btn-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .12s;
+}
+.notif-btn-read {
+  border: 1px solid #A8D5C2;
+  background: #E1F0EB;
+  color: #15674C;
+}
+.notif-btn-read:hover { background: #C5E8D8; }
+
+.notif-btn-del {
+  border: 1px solid #FECACA;
+  background: #FEF2F2;
+  color: #DC2626;
+}
+.notif-btn-del:hover { background: #FEE2E2; }
+
+</style>
+</head>
+<body>
+
+<div class="notif-item">
+  <div class="notif-item-inner">
+
+    <!-- Row 1: dot · badge · title · time -->
+    <div class="notif-row1">
+      <span class="notif-dot"></span>
+      <span class="notif-badge">Chờ duyệt</span>
+      <span class="notif-title">Đề nghị thủ công</span>
+      <span class="notif-time">Hôm qua</span>
+    </div>
+
+    <!-- Row 2: doc link · sender -->
+    <div class="notif-meta">
+      <a href="#" class="notif-doc-link" onclick="return false">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+        </svg>
+        HD-SVC-2026/031
+      </a>
+      <span class="notif-sender">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+        </svg>
+        admin.hr
+      </span>
+    </div>
+
+  </div>
+
+  <!-- Hover actions -->
+  <div class="notif-actions">
+    <button type="button" class="notif-btn-view">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
+      </svg>
+      Xem
+    </button>
+    <button type="button" class="notif-btn-icon notif-btn-read" title="Đánh dấu đã đọc">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+      </svg>
+    </button>
+    <button type="button" class="notif-btn-icon notif-btn-del" title="Xóa thông báo">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+</body>
+</html>
