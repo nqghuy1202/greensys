@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notif Read Filter — Demo</title>
+<style>
+  :root {
+    --primary-color: #15674C;
+    --fourth-color:  #E1F0EB;
+    --white-color:   #FFFFFF;
+    --bg-2:          #EEF1F4;
+    --surface:       var(--white-color, #FFFFFF);
+    --text-1:        #15202B;
+    --text-3:        #7A848F;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    background: #F4F6F8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    margin: 0;
+  }
+
+  .demo-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.08);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 320px;
+  }
+
+  .demo-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #9CA3AF;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+
+  /* ==== Segmented control ==== */
+  #notif-read-filter .notif-type-tabs {
+    display: flex;
+    gap: 3px;
+    padding: 3px;
+    background: var(--bg-2, #EEF1F4);
+    border-radius: 10px;
+  }
+
+  #notif-read-filter .notif-type-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 7px;
+    border: 0;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-3, #7A848F);
+    cursor: pointer;
+    transition: color .15s, background .15s, box-shadow .15s;
+    user-select: none;
+    font-family: inherit;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  #notif-read-filter .notif-type-tab input[type="radio"] { display: none; }
+
+  #notif-read-filter .notif-type-tab:hover {
+    color: var(--text-1, #15202B);
+  }
+  #notif-read-filter .notif-type-tab.active {
+    background: var(--surface, #fff);
+    color: var(--text-1, #15202B);
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0,0,0,.10), 0 0 0 1px rgba(0,0,0,.04);
+  }
+
+  /* Demo: fake region scope */
+  #notif-read-filter { display: contents; }
+</style>
+</head>
+<body>
+
+<div id="notif-read-filter">
+  <div class="demo-card">
+    <div class="demo-label">Filter thông báo</div>
+
+    <div class="notif-type-tabs">
+      <label class="notif-type-tab active">
+        <input type="radio" name="notif-read-type" value="Y" checked onchange="notifSetReadFilter(this)">
+        Đã đọc
+      </label>
+      <label class="notif-type-tab">
+        <input type="radio" name="notif-read-type" value="N" onchange="notifSetReadFilter(this)">
+        Chưa đọc
+      </label>
+    </div>
+
+    <div style="font-size:12px;color:#9CA3AF;">
+      Page item value: <strong id="item-display">"Y"</strong>
+    </div>
+  </div>
+</div>
+
+<script>
+  /*
+   * Trong APEX thật dùng:
+   *   apex.item('P0_NOTIF_READ_FILTER').setValue(radio.value);
+   */
+  function notifSetReadFilter(radio) {
+    var tabs = radio.closest('.notif-type-tabs').querySelectorAll('.notif-type-tab');
+    tabs.forEach(function(t) { t.classList.remove('active'); });
+    radio.closest('.notif-type-tab').classList.add('active');
+
+    /* ── APEX ───────────────────────────────────────────────
+       apex.item('P0_NOTIF_READ_FILTER').setValue(radio.value);
+       ─────────────────────────────────────────────────── */
+    document.getElementById('item-display').textContent = '"' + radio.value + '"';
+  }
+</script>
+</body>
+</html>
