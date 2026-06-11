@@ -4,19 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Mục đích dự án
 
-Notification Drawer Panel cho hệ thống ERP APEX Oracle 24.2. Tích hợp vào **Page 0** (Global Page) — hiển thị trên mọi page của app. Đã hoàn thành cả UI tĩnh lẫn React component; đang ở giai đoạn tích hợp APEX.
+Notification Drawer Panel cho hệ thống ERP APEX Oracle 24.2. Tích hợp vào **Page 0** (Global Page) — hiển thị trên mọi page của app.
 
 ## Cách xem UI
 
-Mở trực tiếp trong browser (double-click hoặc drag vào browser):
+Mở trực tiếp trong browser (không cần build, không cần server):
 
 ```
-src/notification-page.html   — trang thông báo full page (bản chính)
-src/notif-item-demo.html     — demo 1 item đơn lẻ + hover effect
-Notification Slide Panel v3.html — bản gốc React/JSX để tham khảo thiết kế
+src/notification-page.html      — trang thông báo full page (bản chính)
+src/drawer-notification.html    — bản drawer tích hợp mới nhất
+src/notif-item-demo.html        — demo 1 item đơn lẻ + hover effect
+src/notif-read-filter-demo.html — demo filter read/unread
 ```
-
-Không cần build, không cần server.
 
 ## Kiến trúc APEX Integration
 
@@ -36,166 +35,126 @@ Static Application Files
 └── notif-panel.jsx              (upload lên APEX — load qua fetch + Babel.transform)
 ```
 
-**Luồng khởi tạo React:**
-1. `notif-panel.fgvd.js` khai báo `window.notifOpen/Close/Toggle/notifLoadJSX`
-2. `notif-panel.onload.js` gọi `window.notifLoadJSX()` — fetch JSX file, Babel transform, `new Function()` execute
-3. JSX mount `<NotifPanel/>` vào `#notif-root` (idempotent: kiểm tra `container._notifRoot`)
-4. Component expose `window.notifRefresh = loadData` cho SSE handler gọi khi có notification mới
+## JSX Load Chain (quan trọng)
 
-**SSE integration:** Sau khi SSE source khởi tạo (trong global JS), gọi `window.notifSSEInit(sseSource)` — lắng nghe event `notification_new`, cập nhật badge + refresh nếu drawer đang mở.
+`notif-panel.jsx` **không** inline vào Page 0 — chứa JSX syntax nên phải là Static Application File, load runtime qua:
 
-**Tất cả Ajax Callback đặt `pageId: 0`** — callbacks nằm trên Page 0.
+1. `notif-panel.onload.js` gọi `window.notifLoadJSX()`
+2. `notifLoadJSX` fetch file từ `#APP_FILES#notif-panel.jsx`, chạy `Babel.transform(src, { presets: ['react'] })`
+3. Kết quả compile được `new Function(compiled)()` — execute trong global scope
+4. IIFE trong JSX tự mount `<NotifPanel/>` vào `#notif-root` (guard `container._notifRoot` — idempotent)
+5. Sau mount, `window.notifInitDropdown()` được gọi để khởi tạo action dropdown
 
-## Cấu trúc file
+**React/ReactDOM/Babel phải load xong trước bước 2** — load sequentially trong Execute when Page Loads, không dùng File URLs async.
 
-| File | Mục đích |
-|------|---------|
-| `src/notification-page.html` | Bản HTML+CSS thuần — preview UI, paste một phần vào APEX |
-| `src/notif-item-demo.html` | Demo item đơn, tách riêng để test hover/style |
-| `src/notif-panel.html` | HTML structure của drawer — paste vào Static Content region Page 0 |
-| `src/notif-panel.css` | CSS scope `#notif-root` — paste vào Page 0 CSS Inline |
-| `src/notif-panel.fgvd.js` | FGVD Page 0 — drawer toggle, badge update, JSX loader, SSE hook |
-| `src/notif-panel.onload.js` | Execute when Page Loads — gọi `notifLoadJSX()` |
-| `src/notif-panel.jsx` | React component chính — upload lên Static Application Files |
-| `src/notif-callbacks.sql` | 4 APEX Ajax Callback PL/SQL |
-| `docs/setup.md` | Hướng dẫn tích hợp APEX step-by-step + checklist |
-| `Notification Slide Panel v3.html` | Bản thiết kế gốc React — nguồn màu sắc & layout |
+## Window Globals
 
-## Quy tắc thiết kế
+**Khai báo trong `notif-panel.fgvd.js` (trước JSX load):**
 
-**Font:** `'Plus Jakarta Sans'` — load từ Google Fonts.
+| Global | Mô tả |
+|--------|-------|
+| `window.notifOpen()` | Mở drawer + gọi `notifRefresh` |
+| `window.notifClose()` | Đóng drawer |
+| `window.notifToggle()` | Toggle drawer |
+| `window.notifBadgeUpdate(count)` | Cập nhật số badge trên bell icon |
+| `window.notifLoadJSX()` | Fetch + Babel.transform + execute JSX |
+| `window.notifInitDropdown()` | Khởi tạo action dropdown — tự gọi sau JSX load |
+| `window.notifSSEInit(sseSource)` | Đăng ký listener `notification_new` lên SSE source |
 
-**Status colors** — 9 loại, lấy từ `globalHighLightFunction` của hệ thống ERP:
+**Expose từ JSX sau khi React mount:**
 
-| Class | Status | Màu chữ | Màu nền |
-|-------|--------|---------|---------|
-| `.s-W` | Chờ duyệt | `#F18812` | `#FFE5C7` |
-| `.s-N` | Đã duyệt  | `#31956D` | `#E1F0EA` |
-| `.s-Y` | Phê duyệt | `#0C34FF` | `#DFE4FF` |
-| `.s-R` | Từ chối   | `#FB132F` | `#F4C5CB` |
-| `.s-A` | Bổ sung   | `#9D8307` | `#DFE9A8` |
-| `.s-C` | Hết hạn   | `#3D403E` | `#CECFCE` |
-| `.s-L`/`.s-F` | Bổ sung | `#5100B2` | `#D2C2E6` |
-| `.s-I` | Xử lý    | `#D100BC` | `#ECC2E8` |
-| `.s-O` | Đang xử lý | `#0091F7` | `#D9EFFF` |
+| Global | Mô tả |
+|--------|-------|
+| `window.notifRefresh` | Gọi lại `loadData()` trong component |
+| `window.notifMarkAll` | Đánh dấu tất cả đã đọc |
+| `window.notifDeleteAll` | Xóa tất cả thông báo |
+| `window.notifSetReadFilter` | Set filter đọc/chưa đọc từ bên ngoài |
 
-CSS dùng CSS custom properties (`--status-dot`, `--s-c`, `--s-bg`, `--s-bd`) set tại class `.s-*` trên `.notif-item` / `.np-card`.
+## JSX Component Architecture
 
-**Item states:**
-- Unread: thêm class `unread`, `border-left` màu theo status, background `#FAFDF9`
-- Read: không có class `unread`, `border-left: #EBEBEB`, background `#fff`
-- Hover: time fade out (`opacity: 0`), action buttons slide in từ phải
-
-## JSX Component — notif-panel.jsx
-
-`NotifPanel` là React component duy nhất, gồm:
-- `NotifItem` — 1 notification card với hover actions (Xem / Đọc / Xóa)
+`NotifPanel` — component duy nhất với 3 sub-component:
+- `NotifItem` — card thông báo. Hover: time fade out, action buttons slide in từ phải (`translateX`)
 - `SectionLabel` — sticky date group header (HÔM NAY / HÔM QUA / TUẦN TRƯỚC…)
 - `EmptyState` — loading spinner + empty/filtered states
+- `ActionDropdown` — portal render vào `document.body` (thoát `overflow:hidden` của drawer), hover trigger với 300ms timer tránh flicker
 
-**State management:** local React state, optimistic updates (UI cập nhật ngay, sau đó mới gọi server).
+**State pattern:** optimistic updates — UI cập nhật ngay (`setData` trước), sau đó mới gọi `apexProcess`. Lỗi Ajax bị bỏ qua silently để tránh rollback flicker.
 
-**`handleView`** hiện dùng `n.target_url` — chưa có mapping `owner_table_name → page_id`. Khi bổ sung: thêm field `target_page_id` vào query `notifLoad`, dùng `redirect_page` Application Process.
+**`apexProcess(name, data)`** — wrapper Promise cho `apex.server.process` với `pageId: 0`. Mọi Ajax call trong JSX dùng hàm này.
+
+## Data Source
+
+**Tables (local):** `app_notifications (ano)`, `user_notifications (uno)`, `approval_histories_headers (ahh)`, `je_sources (jes)`, `domain (dom)`
+
+**Remote via DBLINK:** `app_users` — luôn dùng `/*+ MATERIALIZE */` trong CTE.
+
+**notifLoad join:**
+```
+app_notifications → approval_histories_headers (ano.owner_id = ahh.ahh_id)
+                  → user_notifications (ano.ano_id = uno.ano_id, uno.aus_id = current user)
+                  LEFT JOIN je_sources (ano.jes_id = jes.jes_id)
+                  JOIN domain (rv_domain='APPROVAL', rv_low_value = ahh.status)
+WHERE uno.deleted='N' AND from_date <= SYSDATE AND (to_date >= SYSDATE OR to_date IS NULL)
+```
+
+**Soft delete:** `notifDelete` set `uno.deleted='Y'`. `notifMarkRead` set `uno.read='Y'`.
+
+**Field mapping SQL → JSX:**
+
+| SQL column | JSX field | Dùng để |
+|-----------|-----------|---------|
+| `ahh.status` | `n.status` | `getNS(status)` → CSS class `ns-*/nd-*/nb-*` |
+| `ano.ano_name` | `n.ano_name` | Title card |
+| `ahh.doc_number` | `n.doc_number` | Doc link |
+| `jes.name` | `n.jes_name` | Sender |
+| `uno.read` | `n.is_read` | `!== 'Y'` = unread |
+| `date_group_label` | `n.date_group_label` | Section divider |
+
+## Status Config
+
+`NS_CONFIG` trong JSX map code (`W/N/Y/R/A/C/L/F/I/O`) → `{ css, dot, bar }` class names. CSS classes `.ns-*/.nd-*/.nb-*` dùng CSS custom property `--s-c`, `--s-bg`, `--s-bd` set tại class `.s-*` trong `notif-panel.css`.
+
+Thêm status mới: thêm vào `NS_CONFIG` object + thêm CSS class tương ứng.
+
+Thêm tab filter mới: thêm vào mảng `TABS` trong JSX.
+
+## Action Dropdown — Portal Pattern
+
+`ActionDropdown` dùng `ReactDOM.createPortal` render vào `document.body` để thoát `overflow:hidden` của drawer. Hover trigger (mouseenter/mouseleave) với 300ms debounce timer (`timerRef`). Position tính bằng `getBoundingClientRect()` → `position:fixed`.
+
+`notifInitDropdown()` trong `notif-panel.fgvd.js` là bản vanilla JS fallback — cùng logic, dùng khi JSX chưa mount. Sau JSX mount, `Btn_Action` được component `ActionDropdown` render và quản lý.
+
+## Navigation "Xem chứng từ"
+
+`handleView` trong JSX hiện dùng `n.target_url` trực tiếp. Khi cần navigation có SSP checksum, thêm `target_page_id` vào query `notifLoad` và dùng `redirect_page` Application Process (xem `docs/apex-patterns.md`).
 
 ## Khi paste vào APEX
 
-Xem `docs/setup.md` cho hướng dẫn đầy đủ. Tóm tắt nhanh:
-- `src/notif-panel.html` → Static Content region Page 0 (After Header)
-- `src/notif-panel.css` → Page 0 → CSS → Inline
-- `src/notif-panel.fgvd.js` → Page 0 → Function and Global Variable Declaration
-- `src/notif-panel.onload.js` → Page 0 → Execute when Page Loads
-- 4 Ajax Callback từ `notif-callbacks.sql` → Page 0 → Processing
-- `notif-panel.jsx` → upload lên Shared Components → Static Application Files
+Xem `docs/setup.md` cho hướng dẫn đầy đủ.
 
-**Lưu ý APEX bắt buộc:**
-- Mọi `<button>` đã có `type="button"` — tránh submit `wwvFlowForm`
+| File | APEX destination |
+|------|----------------|
+| `src/notif-panel.html` | Static Content region Page 0 — After Header |
+| `src/notif-panel.css` | Page 0 → CSS → Inline |
+| `src/notif-panel.fgvd.js` | Page 0 → Function and Global Variable Declaration |
+| `src/notif-panel.onload.js` | Page 0 → Execute when Page Loads |
+| 4 callbacks từ `notif-callbacks.sql` | Page 0 → Processing → Ajax Callback |
+| `notif-panel.jsx` | Shared Components → Static Application Files |
+
+**Bắt buộc:**
+- Mọi `<button>` phải có `type="button"` — tránh submit `wwvFlowForm`
 - `JSON_ARRAYAGG ... RETURNING CLOB` — bắt buộc khi list > ~10 items
 - `/*+ MATERIALIZE */` khi query `app_users` (remote table qua DBLINK)
+- `pageId: 0` trong mọi `apexProcess` call — callbacks nằm trên Page 0
+- `uno.read` so sánh bằng `!== 'Y'` không phải `=== false`
 
-## DOM Manipulation Patterns (APEX)
+## SSE Integration
 
-### Move button vào dialog titlebar — Modal Drawer (iframe page)
-
-Khi dialog là **modal drawer load page riêng trong iframe**, không dùng `dialogopen` event. Thay vào đó, đặt code trên **page con** (page được load trong drawer) và truy cập DOM của parent qua `window.parent.document`:
-
-**FGVD (page con):**
+Sau khi SSE source khởi tạo trong Page 0 FGVD:
 ```javascript
-const moveNotifButtons = () => {
-    const $parent   = $(window.parent.document);
-    const $dialog   = $parent.find('.ui-dialog').filter(':visible').first();
-    const $closeBtn = $dialog.find('.ui-dialog-titlebar-close');
-    if (!$closeBtn.length || $dialog.data('notif-btns-moved')) return;
-
-    const $btn = $('#Btn_Read_All').detach();
-    if (!$btn.length) return;
-
-    const $wrapper = $('<span>').css({ display: 'inline-flex', alignItems: 'center', gap: '4px', marginRight: '6px', verticalAlign: 'middle' });
-    $wrapper.append($btn);
-    $closeBtn.before($wrapper);
-    $dialog.data('notif-btns-moved', true);
-};
+if (typeof window.notifSSEInit === 'function') {
+  window.notifSSEInit(sseSource);
+}
 ```
 
-**Execute when Page Loads (page con):**
-```javascript
-moveNotifButtons();
-```
-
-**Điểm mấu chốt:**
-- Detach button thật (không clone) → click hoạt động tự nhiên, không cần proxy
-- `$dialog.data('notif-btns-moved', true)` — guard idempotent tránh duplicate
-- `filter(':visible')` — tránh nhầm dialog ẩn khác trên trang
-
-### Move IG toolbar actions button
-
-```javascript
-// Lên Breadcrumb region
-const gMoveIGActionToBreadcrumb = (id) => {
-    let b = $('#t_Body_title .t-BreadcrumbRegion-buttons.t-BreadcrumbRegion-buttons--end');
-    let a = $(`#${id}_ig_toolbar_actions_button`).detach();
-    let h = $(`#${id}_ig .a-IG-header`);
-    if (!!b && !!a) { b.append(a); a.css('margin-left', '0.375rem'); h.css('display', 'none'); }
-};
-
-// Lên Region header
-const gMoveIGActionToHeader = (id, idTo = id) => {
-    let b = $(`#${idTo}>>.t-Region-headerItems.t-Region-headerItems--buttons`);
-    let a = $(`#${id}_ig_toolbar_actions_button`).detach();
-    let h = $(`#${id}_ig .a-IG-header`);
-    if (!!b && !!a) {
-        let m = b.find('span.js-maximizeButtonContainer');
-        m.length ? (a.insertBefore(m), a.css('margin-left', '0.375rem')) : b.append(a);
-        h.css('display', 'none');
-    }
-};
-```
-
-### Move items vào IG toolbar
-
-```javascript
-const globalMoveItemsToIG = (regionStaticId, items = []) => {
-    const group = $(`#${regionStaticId}`).find('.a-Toolbar-groupContainer--end .a-Toolbar-group').first();
-    if (!group.length) return;
-    items.forEach(id => {
-        const el = $(`#${id}`);
-        if (!el.length || el[0].contains(group[0]) || group.find(`#${id}`).length) return;
-        el.addClass('a-Button a-Toolbar-item');
-        group.append(el.detach());
-    });
-};
-```
-
-## Data source
-
-Query lấy từ bảng local (`app_notifications`, `user_notifications`, `approval_histories_headers`) join với `app_users` qua DBLINK. Xem `src/notif-callbacks.sql` và `docs/setup.md` để biết pattern MATERIALIZE cần thiết khi join remote table.
-
-Field mapping SQL → UI:
-
-| SQL column | UI field |
-|-----------|---------|
-| `ahh.status` | class `.s-{status}` trên card |
-| `ano.ano_name` | `.notif-title` / `.np-card-title` |
-| `ahh.doc_number` | `.notif-doc-link` / `.np-doc-link` |
-| `jes.name` | `.np-sender` |
-| `uno.read` (`'Y'`/`'N'`) | class `unread` trên card |
-| `date_group_label` | section divider label |
+Server emit event `notification_new` với payload `{ unread_count, aus_id }`. Handler cập nhật badge và refresh drawer nếu đang mở.

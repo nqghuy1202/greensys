@@ -78,6 +78,11 @@ const IUser = () => (
     <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
   </svg>
 );
+const IEllipsis = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+    <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
+  </svg>
+);
 const ISpinner = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
        style={{animation: 'notif-spin 0.8s linear infinite'}}>
@@ -316,13 +321,115 @@ function EmptyState({ isFiltered, onClear, loading }) {
   );
 }
 
+/* ── ActionDropdown (Portal — thoát overflow:hidden của drawer) ── */
+function ActionDropdown({ onMarkAll, onDeleteAll }) {
+  const [open, setOpen]   = React.useState(false);
+  const [pos,  setPos]    = React.useState({ top: 0, right: 0 });
+  const btnRef            = React.useRef(null);
+  const timerRef          = React.useRef(null);
+
+  function openMenu() {
+    clearTimeout(timerRef.current);
+    const r = btnRef.current.getBoundingClientRect();
+    setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+    setOpen(true);
+  }
+
+  function scheduleClose() {
+    timerRef.current = setTimeout(() => setOpen(false), 300);
+  }
+
+  function cancelClose() {
+    clearTimeout(timerRef.current);
+  }
+
+  const menuStyle = {
+    position:     'fixed',
+    top:          pos.top,
+    right:        pos.right,
+    zIndex:       99999,
+    background:   '#fff',
+    border:       '1px solid #E5E7EB',
+    borderRadius: 10,
+    boxShadow:    '0 6px 20px rgba(0,0,0,.13)',
+    padding:      '4px 0',
+    minWidth:     230,
+  };
+
+  const itemStyle = {
+    display:     'flex',
+    alignItems:  'center',
+    gap:         9,
+    padding:     '9px 15px',
+    fontSize:    13,
+    cursor:      'pointer',
+    whiteSpace:  'nowrap',
+    color:       '#374151',
+    transition:  'background .12s',
+    userSelect:  'none',
+  };
+
+  const menu = open && ReactDOM.createPortal(
+    <div
+      style={menuStyle}
+      onMouseEnter={cancelClose}
+      onMouseLeave={scheduleClose}
+    >
+      <div
+        style={itemStyle}
+        onMouseEnter={e => e.currentTarget.style.background = '#F0FBF6'}
+        onMouseLeave={e => e.currentTarget.style.background = ''}
+        onClick={() => { setOpen(false); onMarkAll(); }}
+      >
+        <IDblChk/><span>Đánh dấu tất cả đã đọc</span>
+      </div>
+      <div style={{ height: 1, background: '#F3F4F6', margin: '3px 0' }}/>
+      <div
+        style={{ ...itemStyle, color: '#DC2626' }}
+        onMouseEnter={e => e.currentTarget.style.background = '#FEF2F2'}
+        onMouseLeave={e => e.currentTarget.style.background = ''}
+        onClick={() => { setOpen(false); onDeleteAll(); }}
+      >
+        <ITrash/><span>Xóa tất cả thông báo</span>
+      </div>
+    </div>,
+    document.body
+  );
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        id="Btn_Action"
+        title="Tùy chọn"
+        aria-label="Tùy chọn"
+        onMouseEnter={openMenu}
+        onMouseLeave={scheduleClose}
+        style={{
+          width: 30, height: 30, borderRadius: 7,
+          border: '1.5px solid #E5E7EB', background: open ? '#F3F4F6' : '#fff',
+          color: '#6B7280', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+        onMouseDown={e => e.currentTarget.style.background = '#E9EDF2'}
+        onMouseUp={e => e.currentTarget.style.background = open ? '#F3F4F6' : '#fff'}
+      >
+        <IEllipsis/>
+      </button>
+      {menu}
+    </>
+  );
+}
+
 /* ── NotifPanel (main) ────────────────────────────────────────── */
 function NotifPanel() {
-  const [data,    setData]    = React.useState([]);
-  const [search,  setSearch]  = React.useState('');
-  const [tab,     setTab]     = React.useState('all');
-  const [loading, setLoading] = React.useState(true);
-  const [error,   setError]   = React.useState(null);
+  const [data,       setData]       = React.useState([]);
+  const [search,     setSearch]     = React.useState('');
+  const [tab,        setTab]        = React.useState('all');
+  const [readFilter, setReadFilter] = React.useState('N');
+  const [loading,    setLoading]    = React.useState(true);
+  const [error,      setError]      = React.useState(null);
 
   /* ── Load data ── */
   const loadData = React.useCallback(async () => {
@@ -340,11 +447,22 @@ function NotifPanel() {
 
   React.useEffect(() => { loadData(); }, [loadData]);
 
-  /* Expose refresh cho SSE handler */
+  /* Expose globals cho SSE handler và static HTML region */
   React.useEffect(() => {
     window.notifRefresh = loadData;
     return () => { delete window.notifRefresh; };
   }, [loadData]);
+
+  React.useEffect(() => {
+    window.notifSetReadFilter = (input) => setReadFilter(input.value);
+    return () => { delete window.notifSetReadFilter; };
+  }, []);
+
+  React.useEffect(() => {
+    window.notifMarkAll    = handleMarkAll;
+    window.notifDeleteAll  = handleDeleteAll;
+    return () => { delete window.notifMarkAll; delete window.notifDeleteAll; };
+  }, [handleMarkAll, handleDeleteAll]);
 
   /* ── Computed ── */
   const unread = data.filter(n => n.is_read !== 'Y').length;
@@ -358,6 +476,7 @@ function NotifPanel() {
   const filtered = React.useMemo(() => {
     let d = data;
     if (tab !== 'all') d = d.filter(n => n.status === tab);
+    d = d.filter(n => readFilter === 'Y' ? n.is_read === 'Y' : n.is_read !== 'Y');
     if (search) {
       const q = search.toLowerCase();
       d = d.filter(n =>
@@ -367,7 +486,7 @@ function NotifPanel() {
       );
     }
     return d;
-  }, [data, tab, search]);
+  }, [data, tab, readFilter, search]);
 
   const grouped = React.useMemo(() => {
     const map = {};
@@ -387,12 +506,15 @@ function NotifPanel() {
     } catch (_) { /* optimistic — silently ignore */ }
   };
 
-  const handleMarkAll = async () => {
+  const handleMarkAll = React.useCallback(async () => {
     setData(d => d.map(n => ({ ...n, is_read: 'Y' })));
-    try {
-      await apexProcess('notifMarkAll', {});
-    } catch (_) {}
-  };
+    try { await apexProcess('notifMarkAll', {}); } catch (_) {}
+  }, []);
+
+  const handleDeleteAll = React.useCallback(async () => {
+    setData([]);
+    try { await apexProcess('notifDeleteAll', {}); } catch (_) {}
+  }, []);
 
   const handleRemove = async (ano_id) => {
     setData(d => d.filter(n => n.ano_id !== ano_id));
@@ -415,7 +537,7 @@ function NotifPanel() {
     if (n.is_read !== 'Y') handleMarkRead(n.ano_id);
   };
 
-  const isFiltered = !!(search || tab !== 'all');
+  const isFiltered = !!(search || tab !== 'all' || readFilter !== 'N');
 
   return (
     <>
@@ -453,23 +575,7 @@ function NotifPanel() {
             </div>
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 5, alignItems: 'center' }}>
-            {unread > 0 && (
-              <button
-                type="button"
-                onClick={handleMarkAll}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 5,
-                  fontSize: 11, fontWeight: 700, color: '#15674C',
-                  background: '#E1F0EB', border: '1px solid #A8D5C2',
-                  borderRadius: 7, padding: '6px 11px', cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = '#C5E8D8'}
-                onMouseLeave={e => e.currentTarget.style.background = '#E1F0EB'}
-              >
-                <IDblChk/>Đọc tất cả
-              </button>
-            )}
+            <ActionDropdown onMarkAll={handleMarkAll} onDeleteAll={handleDeleteAll}/>
             <button
               type="button"
               onClick={() => window.notifClose && window.notifClose()}
