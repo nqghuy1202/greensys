@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Doc Chat Modal — Trao đổi chứng từ
 
 Modal chat gắn với từng chứng từ ERP (SO, PXK, HD…). APEX Modal Dialog Page ID: **10022710201**. Deploy bằng **FGVD + Dynamic Action** — không React, không JSX, không Static Files.
@@ -8,15 +12,16 @@ Modal chat gắn với từng chứng từ ERP (SO, PXK, HD…). APEX Modal Dial
 
 ```
 doc-chat/
-  doc-chat-page.fgvd.js     ← ACTIVE: paste vào "Function and Global Variable Declaration"
-  doc-chat-page.onload.js   ← ACTIVE: paste vào "Execute when Page Loads" (chỉ window.dcInit())
-  doc-chat.css               ← ACTIVE: paste vào Page → CSS → Inline
-  CLAUDE.md                  ← file này
+  doc-chat-page.fgvd.js   ← ACTIVE: paste vào "Function and Global Variable Declaration"
+  doc-chat-page.onload.js ← ACTIVE: paste vào "Execute when Page Loads" (chỉ window.dcInit())
+  doc-chat.css            ← ACTIVE: paste vào Page → CSS → Inline
+  preview.html            ← Preview giao diện trên browser (mock data, không cần APEX)
+  CLAUDE.md               ← file này
   docs/
-    da-setup.md              Bảng 19 Dynamic Actions + paste checklist
-    native.sql               4 HTML-returning callbacks (SQL đầy đủ)
-    callbacks.sql            4 action-only callbacks (SQL đầy đủ)
-    modal-plan.md            Kế hoạch chuyển từ JSX sang native (tham khảo)
+    da-setup.md           Bảng 19 Dynamic Actions + paste checklist
+    native.sql            4 HTML-returning callbacks (SQL đầy đủ)
+    callbacks.sql         4 action-only callbacks (SQL đầy đủ)
+    modal-plan.md         Kế hoạch chuyển từ JSX sang native (tham khảo)
 ```
 
 ## Deploy lên APEX — Quy trình 3 bước
@@ -51,8 +56,8 @@ Paste `doc-chat.css` vào Page → CSS → Inline (giới hạn ~32KB).
 
 **Pattern đọc/ghi:**
 ```javascript
-$v('P' + pageId + '_CONV_ID')                   // đọc
-$s('P' + pageId + '_CONV_ID', convId)           // ghi
+$v('P' + pageId + '_CONV_ID')                    // đọc
+$s('P' + pageId + '_CONV_ID', convId)            // ghi
 apex.item('P' + pageId + '_CONV_ID').setValue(v) // APEX 24.x
 ```
 
@@ -91,17 +96,46 @@ apex.server.process('dcMsgThreadHtml', { x01: convId, x02: searchQuery }, {
 
 ```
 FGVD (doc-chat-page.fgvd.js)
-  ├── State: currentConvId, currentAusId, docType, docNo, docCtx
-  ├── dcInit() — đọc docChatCtx từ sessionStorage, load conv list
-  ├── dcOnConvSelect(convId) — load thread HTML + compose area
-  ├── dcOnSend() — gửi tin
-  ├── dcOnFilter(filter) — chuyển ALL/DM/CHANNEL tab
-  ├── dcOnSearch(query) — search in thread
-  └── window.dcOn* — expose tất cả handlers
+  ├── State: activeConvId, AUS_ID, activeFilter, showInfo, typingUsers/Timers, selectedMembers
+  ├── dcInit()           — đọc docChatCtx từ sessionStorage, set page items, load conv list
+  ├── selectConv(id)     — load thread HTML, load info, mark read, update header
+  ├── sendMessage()      — dcJson docChatSend, reload thread + conv list on success
+  ├── openCompose(type)  — toggle list/compose screens, load contacts
+  ├── applyConvType(t)   — toggle name field, trim selectedMembers for DM
+  └── window.dcOn*       — 19 public handlers cho Dynamic Actions gọi
 
 apex:chatEvent (bind trong FGVD — parent document, không phải iframe document):
-  window.parent.apex.jQuery(window.parent.document).on('apex:chatEvent', handler)
+  var $eventDoc = (inIframe ? window.parent.apex.jQuery : $)(eventWin.document)
+  $eventDoc.on('apex:chatEvent', onChatEvent)
+  // Cleanup khi modal đóng: $(window).on('unload', ...)
 ```
+
+**Flow real-time:** SSE → `global.js` (trang cha) → `apex.jQuery(parent.document).trigger('apex:chatEvent', ev)` → handler trong FGVD của iframe.
+
+## CSS Design System
+
+`doc-chat.css` scoped trong `#doc-chat-root`. Đổi màu chỉ qua khối `:root` đầu file.
+
+| Token cục bộ | Map sang hệ thống | Fallback |
+|---|---|---|
+| `--primary` | `var(--primary-color)` | `#15674C` |
+| `--primary-50` | `var(--fourth-color)` | `#E1F0EB` |
+| `--primary-25` | `color-mix(in srgb, primary 8%, transparent)` | focus wash nhạt |
+| `--surface` | `var(--white-color)` | `#FFFFFF` |
+| `--sidebar-bg` | — | `#F7F8FA` (left pane) |
+| `--border` | `rgba(0,0,0,.08)` | tinh tế hơn border cứng |
+| `--danger` | `var(--red-color)` | `#D81F25` |
+
+**Avatar rules:**
+- Nhóm/chứng từ: nền phẳng `var(--primary-color)` — không gradient
+- User: `hsl(aus_id * 47 % 360, 55%, 52%)` — dynamically set qua inline style trong PL/SQL HTML
+
+**3 lớp background phân biệt:**
+- Left pane sidebar: `var(--sidebar-bg)` = `#F7F8FA`
+- Chat center pane: `var(--surface)` = trắng
+- Right info pane: `var(--surface)` = trắng
+
+**Preview:** Mở `preview.html` trực tiếp trên browser để xem giao diện với mock data. Có switcher tabs cho các trạng thái: hội thoại, compose DM, compose nhóm, typing, reply.
 
 ## Cross-frame Trap — Quan trọng
 
@@ -115,15 +149,12 @@ $(document).on('apex:chatEvent', handler);
 window.parent.apex.jQuery(window.parent.document).on('apex:chatEvent', handler);
 ```
 
-Global `global.js` trigger event trên `parent.document`. Iframe phải bind đúng chỗ đó.
-
 ## Mở Modal từ ERP Page
 
 Modal cần SSP checksum — generate server-side qua `redirect_page` Application Process:
 
 ```javascript
-// Dynamic Action trên #Btn_DocChat
-var triggerEl = this.triggeringElement;
+var triggerEl = this.triggeringElement;   // capture trước await
 var docCtx = {
     doc_type: 'SO', doc_no: '&P15_SO_NO.',
     doc_label: 'Đơn hàng bán', doc_status: '&P15_STATUS.',
@@ -143,7 +174,7 @@ apex.navigation.dialog(url, {
 }, null, triggerEl);
 ```
 
-**Tại sao sessionStorage:** Doc fields chứa Unicode, dấu phẩy → không pass được qua APEX URL params. Pass qua sessionStorage, JS đọc trong `dcInit()`.
+**Tại sao sessionStorage:** Doc fields chứa Unicode, dấu phẩy → không pass được qua APEX URL params.
 
 ## :APP_USER Pattern (bắt buộc trong mọi callback)
 
@@ -173,31 +204,16 @@ SELECT ... FROM remote_data r LEFT JOIN CHAT_PARTICIPANTS cp ON cp.aus_id = r.au
 
 ## Pitfalls Doc Chat
 
-**pageId cố định 10022710201:** Modal page không thay đổi — hardcode trong `apex.server.process` calls. `window.pageId` cũng có nhưng luôn bằng `10022710201`.
+**pageId cố định 10022710201:** Hardcode trong mọi `apex.server.process` call. `window.pageId` cũng có nhưng luôn bằng `10022710201`.
 
 **window.dcOn* chứ không phải hàm private:** DA chạy trong global scope — gọi `window.dcSendMessage()`, không phải `sendMessage()`.
 
-**display:grid cho overlay:** `.nested-overlay` dùng `display:grid` khi show (để `place-items:center` hoạt động), `display:none` khi ẩn.
+**applyConvType thay cho .trigger('change'):** DA#15 (Change radio) chỉ handle user click. `openCompose()` gọi thẳng `applyConvType()` — không dùng `.trigger('change')` vì DA không nhận trigger giả lập.
 
-**Overlay phải trong .modal:** `#dc-create-overlay` phải nằm bên trong `.modal` (có `position:relative`) — không phải ngoài — để `position:absolute; inset:0` bám đúng.
+**scrollToBottom sau 300ms:** Sau khi swap innerHTML cần `setTimeout(scrollToBottom, 300)` — DOM cần thời gian render trước khi `scrollHeight` chính xác.
 
-**scrollToBottom sau 300ms:** Sau khi swap innerHTML cần `setTimeout(scrollToBottom, 300)` — DOM cần thời gian render.
+**nested-overlay position:** `#dc-create-overlay` phải nằm bên trong `.modal` (có `position:relative`) để `position:absolute; inset:0` bám đúng container, không bị clip ra ngoài.
 
-**Avatar color:** Dùng `hsl(aus_id * 47 % 360, 55%, 52%)` — consistent, không cần hardcode.
+**UTL_HTTP POST — Connection: close bắt buộc:** `docChatSend`, `docChatRead`, `docChatTyping` relay sang Node qua POST. Thiếu `Connection: close` + `WRITE_RAW` → `BadRequestError: request aborted`. Xem `docs/pitfalls.md` ở root.
 
-**HTF.ESCAPE_SC + VISCII:** Trong PL/SQL dùng `HTF.ESCAPE_SC` để escape HTML. Clean VISCII chars: `REGEXP_REPLACE(str,'[[:cntrl:]]','')` — chỉ sau MATERIALIZE.
-
-**UTL_HTTP POST — Connection: close bắt buộc:** `docChatSend`, `docChatRead`, `docChatTyping` relay sang Node qua POST — phải có `Connection: close` + `WRITE_RAW`. Thiếu → `BadRequestError: request aborted`. Xem `docs/pitfalls.md`.
-
-## CSS — Token hệ thống
-
-`doc-chat.css` (scope `#doc-chat-root`) không hardcode màu:
-
-| Biến cục bộ | Token hệ thống |
-|-------------|---------------|
-| `--primary` | `var(--primary-color, #15674C)` |
-| `--surface` | `var(--white-color, #FFFFFF)` |
-| `--border` | `var(--border-color, #E6E6E6)` |
-| `--danger` | `var(--red-color, #D81F25)` |
-
-Avatar nhóm/chứng từ: nền phẳng `var(--primary-color)` (không gradient). Avatar user: `hsl(aus_id*47 % 360, 55%, 52%)`.
+**HTF.ESCAPE_SC + VISCII:** Trong PL/SQL HTML-returning callbacks, escape với `HTF.ESCAPE_SC`. Clean VISCII control chars bằng `REGEXP_REPLACE(str,'[[:cntrl:]]','')` — chỉ áp dụng sau khi đã MATERIALIZE.
