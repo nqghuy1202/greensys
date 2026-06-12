@@ -1,0 +1,33 @@
+<!-- ============================================================
+  Bulk action dot-menu — hover mở 2 option
+  Paste vào: Static Content region trong TC page
+  ============================================================ -->
+
+<div class="nba-wrap">
+  <button type="button" class="nba-trigger" id="Btn_BulkAction"
+          aria-label="Tùy chọn hàng loạt" aria-haspopup="true" aria-expanded="false"
+          onmouseenter="notifBulkMenuOpen(this)"
+          onmouseleave="notifBulkMenuScheduleClose()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+    </svg>
+  </button>
+</div>
+
+<div class="nba-menu" id="nba-menu"
+     onmouseenter="notifBulkMenuCancelClose()"
+     onmouseleave="notifBulkMenuScheduleClose()">
+  <button type="button" class="nba-item nba-read" onclick="notifBulkMarkAll()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z"/>
+    </svg>
+    Đánh dấu đã đọc tất cả
+  </button>
+  <div class="nba-sep"></div>
+  <button type="button" class="nba-item nba-del" onclick="notifBulkDeleteAll()">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+    </svg>
+    Xóa tất cả thông báo
+  </button>
+</div>

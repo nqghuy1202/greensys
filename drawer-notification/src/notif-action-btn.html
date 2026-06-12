@@ -1,0 +1,16 @@
+<!-- ============================================================
+  #Btn_Action — Action button cho title bar dialog
+  Đặt 1 lần trong TC page, ví dụ: Static Content region ẩn
+  (hidden region hoặc sau #notif-root)
+
+  moveNotifButtons() sẽ detach nút này và đưa vào .ui-dialog titlebar
+  ============================================================ -->
+
+<button type="button"
+        id="Btn_Action"
+        aria-label="Tùy chọn thông báo"
+        aria-expanded="false"
+        aria-haspopup="true"
+        onclick="notifActionToggle(this)">
+  &#8943;
+</button>

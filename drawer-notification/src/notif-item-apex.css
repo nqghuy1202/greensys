@@ -1,0 +1,360 @@
+/* ============================================================
+   Notification Item — v2
+   Paste vào: Page 0 → CSS → Inline  (thêm vào notif-panel.css)
+   Scope: .ni, .ni-*, .ni-dropdown
+   ============================================================ */
+
+/* ── Item shell ─────────────────────────────────────────────── */
+.ni {
+  position: relative;
+  border-bottom: 1px solid #F0F1F3;
+  border-left: 3px solid transparent;
+  background: #fff;
+  transition: background .12s;
+  cursor: default;
+}
+.ni:last-child { border-bottom: none; }
+.ni:hover      { background: #F7F8FA; }
+
+/* Unread background */
+.ni.read-N       { background: #F9FCFB; }
+.ni.read-N:hover { background: #F2F8F5; }
+
+/* Read: soften text */
+.ni.read-Y .ni-doc   { color: #6B7280; font-weight: 600; }
+.ni.read-Y .ni-badge { opacity: .55; }
+.ni.read-Y .ni-title { color: #6B7280; font-weight: 400; }
+
+/* ── Left border per status ─────────────────────────────────── */
+.ni.status-waiting    { border-left-color: #F18812; }
+.ni.status-approved   { border-left-color: #31956D; }
+.ni.status-rejected   { border-left-color: #FB132F; }
+.ni.status-expired    { border-left-color: #9CA3AF; }
+.ni.status-processing { border-left-color: #0091F7; }
+.ni.status-supplement { border-left-color: #7C3AED; }
+.ni.status-y          { border-left-color: #2563EB; }
+.ni.status-i          { border-left-color: #D100BC; }
+.ni.status-a          { border-left-color: #84740C; }
+
+/* ── Inner layout ───────────────────────────────────────────── */
+.ni-inner {
+  padding: 9px 13px 8px 13px;
+}
+
+/* ── Row 1: dot · doc number · badge · date ─────────────────── */
+.ni-row1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+/* Unread indicator dot */
+.ni-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: transparent;
+}
+.ni.read-N.status-waiting    .ni-dot { background: #F18812; }
+.ni.read-N.status-approved   .ni-dot { background: #31956D; }
+.ni.read-N.status-rejected   .ni-dot { background: #FB132F; }
+.ni.read-N.status-expired    .ni-dot { background: #9CA3AF; }
+.ni.read-N.status-processing .ni-dot { background: #0091F7; }
+.ni.read-N.status-supplement .ni-dot { background: #7C3AED; }
+.ni.read-N.status-y          .ni-dot { background: #2563EB; }
+.ni.read-N.status-i          .ni-dot { background: #D100BC; }
+.ni.read-N.status-a          .ni-dot { background: #84740C; }
+
+/* Doc number — thông tin quan trọng nhất */
+.ni-doc {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.ni-doc:hover { text-decoration: underline; color: var(--primary-color, #15674C); }
+
+/* Status badge */
+.ni-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  padding: 1px 7px;
+  border-radius: 99px;
+  border: 1px solid;
+  flex-shrink: 0;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+.ni.status-waiting    .ni-badge { color: #B45309; background: #FEF3C7; border-color: #FCD34D; }
+.ni.status-approved   .ni-badge { color: #166534; background: #DCFCE7; border-color: #86EFAC; }
+.ni.status-rejected   .ni-badge { color: #991B1B; background: #FEE2E2; border-color: #FCA5A5; }
+.ni.status-expired    .ni-badge { color: #374151; background: #F3F4F6; border-color: #D1D5DB; }
+.ni.status-processing .ni-badge { color: #1D4ED8; background: #DBEAFE; border-color: #93C5FD; }
+.ni.status-supplement .ni-badge { color: #5B21B6; background: #EDE9FE; border-color: #C4B5FD; }
+.ni.status-y          .ni-badge { color: #1E40AF; background: #DBEAFE; border-color: #93C5FD; }
+.ni.status-i          .ni-badge { color: #9D174D; background: #FCE7F3; border-color: #F9A8D4; }
+.ni.status-a          .ni-badge { color: #713F12; background: #FEF9C3; border-color: #FDE047; }
+
+/* Date */
+.ni-time {
+  font-size: 10.5px;
+  color: #9CA3AF;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
+}
+
+/* ── Row 2: title · sender ──────────────────────────────────── */
+.ni-row2 {
+  display: flex;
+  align-items: center;
+  padding-left: 11px;
+}
+
+.ni-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+/* ── Dot menu button (⋯) — inline trong row 2 ───────────────── */
+.ni-menu-btn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #9CA3AF;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity .15s, background .12s, color .12s;
+  font-size: 14px;
+  line-height: 1;
+  letter-spacing: .5px;
+  margin-left: 6px;
+}
+.ni:hover .ni-menu-btn     { opacity: 1; }
+.ni-menu-btn:hover         { background: #E5E7EB; color: #374151; }
+.ni-menu-btn.ni-menu-open  { opacity: 1; background: #E5E7EB; color: #374151; }
+
+/* ── Dropdown ───────────────────────────────────────────────── */
+.ni-dropdown {
+  position: fixed;
+  z-index: 9999;
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 10px;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,.08), 0 10px 24px -4px rgba(0,0,0,.12);
+  padding: 4px;
+  min-width: 180px;
+  display: none;
+  animation: niDropIn .12s ease;
+}
+.ni-dropdown.open { display: block; }
+
+@keyframes niDropIn {
+  from { opacity: 0; transform: translateY(-4px) scale(.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);   }
+}
+
+.ni-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: background .1s, color .1s;
+  white-space: nowrap;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+}
+.ni-dd-item svg                { flex-shrink: 0; opacity: .7; }
+.ni-dd-item:hover              { background: #F3F4F6; color: #111827; }
+.ni-dd-item:hover svg          { opacity: 1; }
+.ni-dd-item.dd-view:hover      { background: #F0FDF4; color: var(--primary-color, #15674C); }
+.ni-dd-item.dd-read:hover      { background: #EFF6FF; color: #1D4ED8; }
+.ni-dd-item.dd-del             { color: #6B7280; }
+.ni-dd-item.dd-del:hover       { background: #FEF2F2; color: #DC2626; }
+
+.ni-dd-sep { height: 1px; background: #F3F4F6; margin: 3px 0; }
+
+/* ── Bulk dot-menu (nba) ─────────────────────────────────────── */
+.nba-wrap {
+  display: flex;
+  align-items: center;
+  padding: 7px 10px;
+  border-bottom: 1px solid #F0F1F3;
+  background: #fff;
+}
+
+/* Trigger button — icon ⋮ */
+.nba-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid #E5E7EB;
+  background: #fff;
+  color: #6B7280;
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.nba-trigger:hover,
+.nba-trigger[aria-expanded="true"] {
+  background: #F3F4F6;
+  color: #111827;
+  border-color: #D1D5DB;
+}
+.nba-trigger svg { pointer-events: none; }
+
+/* Dropdown menu */
+.nba-menu {
+  position: fixed;
+  z-index: 2147483647;
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 10px;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,.08), 0 10px 24px -4px rgba(0,0,0,.13);
+  padding: 4px;
+  min-width: 210px;
+  display: none;
+  animation: nbaDropIn .13s ease;
+}
+.nba-menu.open { display: block; }
+
+@keyframes nbaDropIn {
+  from { opacity: 0; transform: translateY(-5px) scale(.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);   }
+}
+
+/* Menu items */
+.nba-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 11px;
+  border-radius: 7px;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background .1s, color .1s;
+  white-space: nowrap;
+}
+.nba-item svg { flex-shrink: 0; opacity: .65; transition: opacity .1s; }
+.nba-item:hover svg { opacity: 1; }
+
+.nba-read         { color: #374151; }
+.nba-read:hover   { background: #EFF6FF; color: #1D4ED8; }
+
+.nba-del          { color: #6B7280; }
+.nba-del:hover    { background: #FEF2F2; color: #DC2626; }
+
+.nba-sep { height: 1px; background: #F3F4F6; margin: 3px 0; }
+
+/* ── #Btn_Action — APEX hot button reset + notif style ──────── */
+#Btn_Action.t-Button {
+  /* Reset APEX hot button */
+  all: unset !important;
+  box-sizing: border-box !important;
+
+  /* Layout */
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  height: 26px !important;
+  padding: 0 9px !important;
+  border-radius: 7px !important;
+
+  /* Look: match ni-menu-btn tone */
+  border: 1px solid #E5E7EB !important;
+  background: #fff !important;
+  color: #374151 !important;
+  cursor: pointer !important;
+
+  /* Typography */
+  font-family: inherit !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+
+  /* Smooth */
+  transition: background .12s, color .12s, border-color .12s, box-shadow .12s !important;
+  vertical-align: middle !important;
+}
+
+/* Icon */
+#Btn_Action.t-Button .t-Icon {
+  font-size: 12px !important;
+  line-height: 1 !important;
+  opacity: .7 !important;
+  flex-shrink: 0 !important;
+}
+
+/* Ẩn icon phải (thường trùng) */
+#Btn_Action.t-Button .t-Icon--right { display: none !important; }
+
+/* Label */
+#Btn_Action.t-Button .t-Button-label {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+}
+
+/* Hover */
+#Btn_Action.t-Button:hover {
+  background: #F3F4F6 !important;
+  color: #111827 !important;
+  border-color: #D1D5DB !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,.07) !important;
+}
+#Btn_Action.t-Button:hover .t-Icon { opacity: 1 !important; }
+
+/* Active / open state */
+#Btn_Action.t-Button:active,
+#Btn_Action.t-Button[aria-expanded="true"] {
+  background: #E5E7EB !important;
+  color: #111827 !important;
+  border-color: #D1D5DB !important;
+  box-shadow: none !important;
+}
+
+/* Focus visible */
+#Btn_Action.t-Button:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color, #15674C) 20%, transparent) !important;
+}

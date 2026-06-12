@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Notif Item v2 — Demo</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  background: #EDEEF0;
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 24px;
+  gap: 40px;
+}
+
+/* ── Demo wrapper ─────────────────────────────────────────── */
+.demo-col { display: flex; flex-direction: column; gap: 24px; }
+.demo-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #8A8F9A;
+  margin-bottom: 4px;
+}
+
+.notif-list {
+  width: 420px;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.06);
+}
+
+/* ── NOTIFICATION ITEM — v2 ───────────────────────────────── */
+.ni {
+  position: relative;
+  border-bottom: 1px solid #F0F1F3;
+  border-left: 3px solid transparent;
+  background: #fff;
+  transition: background .12s;
+  cursor: default;
+}
+.ni:last-child { border-bottom: none; }
+.ni:hover { background: #F7F8FA; }
+
+/* Unread state */
+.ni.unread {
+  background: #F9FCFB;
+}
+.ni.unread:hover { background: #F2F8F5; }
+
+/* Status left border colors */
+.ni.s-W { border-left-color: #F18812; }
+.ni.s-N { border-left-color: #31956D; }
+.ni.s-R { border-left-color: #FB132F; }
+.ni.s-C { border-left-color: #9CA3AF; }
+.ni.s-O { border-left-color: #0091F7; }
+.ni.s-L, .ni.s-F { border-left-color: #7C3AED; }
+.ni.s-Y { border-left-color: #2563EB; }
+.ni.s-I { border-left-color: #D100BC; }
+.ni.s-A { border-left-color: #84740C; }
+
+/* ── Inner layout ─────────────────────────────────────────── */
+.ni-inner {
+  padding: 9px 13px 8px 13px;
+}
+
+/* ── Row 1: doc + status badge + time ────────────────────── */
+.ni-row1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+/* Unread dot */
+.ni-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #D1D5DB; /* read */
+}
+.ni.unread .ni-dot { background: currentColor; } /* inherits from status var */
+.ni.unread.s-W .ni-dot { color: #F18812; background: #F18812; }
+.ni.unread.s-N .ni-dot { color: #31956D; background: #31956D; }
+.ni.unread.s-R .ni-dot { color: #FB132F; background: #FB132F; }
+.ni.unread.s-C .ni-dot { color: #9CA3AF; background: #9CA3AF; }
+.ni.unread.s-O .ni-dot { color: #0091F7; background: #0091F7; }
+.ni.unread.s-L .ni-dot,
+.ni.unread.s-F .ni-dot { color: #7C3AED; background: #7C3AED; }
+.ni.unread.s-Y .ni-dot { color: #2563EB; background: #2563EB; }
+.ni.unread.s-I .ni-dot { color: #D100BC; background: #D100BC; }
+.ni.unread.s-A .ni-dot { color: #84740C; background: #84740C; }
+
+/* Doc number — primary info */
+.ni-doc {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.ni-doc:hover { text-decoration: underline; color: #15674C; }
+
+/* Status badge */
+.ni-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  padding: 1px 7px;
+  border-radius: 99px;
+  border: 1px solid;
+  flex-shrink: 0;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+/* Badge colors per status */
+.ni.s-W .ni-badge { color: #B45309; background: #FEF3C7; border-color: #FCD34D; }
+.ni.s-N .ni-badge { color: #166534; background: #DCFCE7; border-color: #86EFAC; }
+.ni.s-R .ni-badge { color: #991B1B; background: #FEE2E2; border-color: #FCA5A5; }
+.ni.s-C .ni-badge { color: #374151; background: #F3F4F6; border-color: #D1D5DB; }
+.ni.s-O .ni-badge { color: #1D4ED8; background: #DBEAFE; border-color: #93C5FD; }
+.ni.s-L .ni-badge,
+.ni.s-F .ni-badge { color: #5B21B6; background: #EDE9FE; border-color: #C4B5FD; }
+.ni.s-Y .ni-badge { color: #1E40AF; background: #DBEAFE; border-color: #93C5FD; }
+.ni.s-I .ni-badge { color: #9D174D; background: #FCE7F3; border-color: #F9A8D4; }
+.ni.s-A .ni-badge { color: #713F12; background: #FEF9C3; border-color: #FDE047; }
+
+/* Time */
+.ni-time {
+  font-size: 10.5px;
+  color: #9CA3AF;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
+}
+
+/* ── Row 2: title · sender ────────────────────────────────── */
+.ni-row2 {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding-left: 11px;
+}
+
+/* Notification title / name */
+.ni-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Separator + sender */
+.ni-sender {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: #9CA3AF;
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-left: 8px;
+}
+.ni-sender::before {
+  content: '·';
+  margin-right: 4px;
+  color: #D1D5DB;
+}
+.ni-sender svg { flex-shrink: 0; opacity: .75; }
+
+/* ── Dot menu button ──────────────────────────────────────── */
+.ni-menu-btn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #9CA3AF;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity .15s, background .12s, color .12s;
+  letter-spacing: .5px;
+  font-size: 14px;
+  line-height: 1;
+  margin-left: 6px;
+}
+.ni:hover .ni-menu-btn { opacity: 1; }
+.ni-menu-btn:hover {
+  background: #E5E7EB;
+  color: #374151;
+}
+.ni-menu-btn.active {
+  opacity: 1;
+  background: #E5E7EB;
+  color: #374151;
+}
+
+/* ── Dropdown menu ────────────────────────────────────────── */
+.ni-dropdown {
+  position: fixed;
+  z-index: 9999;
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 10px;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,.08), 0 10px 24px -4px rgba(0,0,0,.12);
+  padding: 4px;
+  min-width: 180px;
+  display: none;
+  animation: dropIn .12s ease;
+}
+.ni-dropdown.open { display: block; }
+
+@keyframes dropIn {
+  from { opacity: 0; transform: translateY(-4px) scale(.97); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+.ni-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: background .1s, color .1s;
+  white-space: nowrap;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+}
+.ni-dd-item svg { flex-shrink: 0; opacity: .7; }
+.ni-dd-item:hover { background: #F3F4F6; color: #111827; }
+.ni-dd-item:hover svg { opacity: 1; }
+.ni-dd-item.dd-view:hover { background: #F0FDF4; color: #15674C; }
+.ni-dd-item.dd-read:hover { background: #EFF6FF; color: #1D4ED8; }
+.ni-dd-item.dd-del  { color: #6B7280; }
+.ni-dd-item.dd-del:hover  { background: #FEF2F2; color: #DC2626; }
+
+.ni-dd-sep {
+  height: 1px;
+  background: #F3F4F6;
+  margin: 3px 0;
+}
+
+</style>
+</head>
+<body>
+
+<!-- ── DEMO ───────────────────────────────────────────────── -->
+<div class="demo-col">
+
+  <div>
+    <div class="demo-label">Chưa đọc — nhiều trạng thái</div>
+    <div class="notif-list">
+
+      <!-- UNREAD · Chờ duyệt -->
+      <div class="ni unread s-W">
+        <div class="ni-inner">
+          <div class="ni-row1">
+            <span class="ni-dot"></span>
+            <a href="#" class="ni-doc" onclick="return false">SO-2601/010</a>
+            <span class="ni-badge">Chờ duyệt</span>
+            <span class="ni-time">12/06/2026</span>
+          </div>
+          <div class="ni-row2">
+            <span class="ni-title">Phê duyệt đơn bán hàng Q2 2026</span>
+            <button type="button" class="ni-menu-btn" onclick="toggleMenu(this)">⋯</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- UNREAD · Đã duyệt -->
+      <div class="ni unread s-N">
+        <div class="ni-inner">
+          <div class="ni-row1">
+            <span class="ni-dot"></span>
+            <a href="#" class="ni-doc" onclick="return false">PXK-2026/0442</a>
+            <span class="ni-badge">Đã duyệt</span>
+            <span class="ni-time">12/06/2026</span>
+          </div>
+          <div class="ni-row2">
+            <span class="ni-title">Phiếu xuất kho vật tư — Kho TP.HCM</span>
+            <button type="button" class="ni-menu-btn" onclick="toggleMenu(this)">⋯</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- UNREAD · Từ chối -->
+      <div class="ni unread s-R">
+        <div class="ni-inner">
+          <div class="ni-row1">
+            <span class="ni-dot"></span>
+            <a href="#" class="ni-doc" onclick="return false">HD-SVC-2026/031</a>
+            <span class="ni-badge">Từ chối</span>
+            <span class="ni-time">11/06/2026</span>
+          </div>
+          <div class="ni-row2">
+            <span class="ni-title">Đề nghị thanh toán dịch vụ bảo trì</span>
+            <button type="button" class="ni-menu-btn" onclick="toggleMenu(this)">⋯</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- UNREAD · Đang xử lý -->
+      <div class="ni unread s-O">
+        <div class="ni-inner">
+          <div class="ni-row1">
+            <span class="ni-dot"></span>
+            <a href="#" class="ni-doc" onclick="return false">PR-2026/0188</a>
+            <span class="ni-badge">Đang xử lý</span>
+            <span class="ni-time">10/06/2026</span>
+          </div>
+          <div class="ni-row2">
+            <span class="ni-title">Yêu cầu mua hàng thiết bị văn phòng</span>
+            <button type="button" class="ni-menu-btn" onclick="toggleMenu(this)">⋯</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- UNREAD · Bổ sung -->
+      <div class="ni unread s-L">
+        <div class="ni-inner">
+          <div class="ni-row1">
+            <span class="ni-dot"></span>
+            <a href="#" class="ni-doc" onclick="return false">QT-2026/0055</a>
+            <span class="ni-badge">Bổ sung</span>
+            <span class="ni-time">06/06/2026</span>
+          </div>
+          <div class="ni-row2">
+            <span class="ni-title">Quyết toán chi phí dự án Alpha Phase 2</span>
+            <button type="button" class="ni-menu-btn" onclick="toggleMenu(this)">⋯</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div>
+    <div class="demo-label">Đã đọc — trạng thái mờ hơn</div>
+    <div class="notif-list">
+
+      <!-- READ -->
+      <div class="ni s-N">
+        <div class="ni-inner">
+          <div class="ni-row1">
+            <span class="ni-dot"></span>
+            <a href="#" class="ni-doc" onclick="return false" style="color:#6B7280;font-weight:600">PO-2026/0321</a>
+            <span class="ni-badge" style="opacity:.6">Đã duyệt</span>
+            <span class="ni-time">12/06/2026</span>
+          </div>
+          <div class="ni-row2">
+            <span class="ni-title" style="color:#6B7280;font-weight:400">Phê duyệt đơn đặt hàng nhà cung cấp</span>
+            <button type="button" class="ni-menu-btn" onclick="toggleMenu(this)">⋯</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- READ -->
+      <div class="ni s-C">
+        <div class="ni-inner">
+          <div class="ni-row1">
+            <span class="ni-dot"></span>
+            <a href="#" class="ni-doc" onclick="return false" style="color:#6B7280;font-weight:600">DX-2026/0099</a>
+            <span class="ni-badge" style="opacity:.6">Hết hạn</span>
+            <span class="ni-time">10/06/2026</span>
+          </div>
+          <div class="ni-row2">
+            <span class="ni-title" style="color:#6B7280;font-weight:400">Đề xuất điều chỉnh ngân sách Q1</span>
+            <button type="button" class="ni-menu-btn" onclick="toggleMenu(this)">⋯</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Dropdown portal ─────────────────────────────────────── -->
+<div class="ni-dropdown" id="notif-dd">
+  <button type="button" class="ni-dd-item dd-view">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
+    </svg>
+    Xem chứng từ
+  </button>
+  <button type="button" class="ni-dd-item dd-read">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+    </svg>
+    Đánh dấu đã đọc
+  </button>
+  <div class="ni-dd-sep"></div>
+  <button type="button" class="ni-dd-item dd-del">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+    </svg>
+    Xóa thông báo
+  </button>
+</div>
+
+<script>
+var activeBtn = null;
+var dd = document.getElementById('notif-dd');
+
+function toggleMenu(btn) {
+  if (activeBtn === btn && dd.classList.contains('open')) {
+    closeMenu(); return;
+  }
+  if (activeBtn) activeBtn.classList.remove('active');
+  activeBtn = btn;
+  btn.classList.add('active');
+
+  var r = btn.getBoundingClientRect();
+  dd.style.top  = (r.bottom + 4) + 'px';
+  dd.style.left = Math.min(r.right - 180, window.innerWidth - 196) + 'px';
+  dd.classList.add('open');
+}
+
+function closeMenu() {
+  dd.classList.remove('open');
+  if (activeBtn) { activeBtn.classList.remove('active'); activeBtn = null; }
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.ni-menu-btn') && !e.target.closest('.ni-dropdown')) closeMenu();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+<!-- ============================================================
+  APEX Template Component — Content Row
+  Paste vào: Template Component → Row Template
+  Substitution vars từ query: STATUS_CSS, IS_READ, DOC_NUMBER,
+    STATUS_LABEL, NGAY_TAO, ANO_NAME, JES_NAME, ANO_ID, AHH_ID
+  ============================================================ -->
+
+<div class="ni &STATUS_CSS. read-&IS_READ." data-ano-id="&ANO_ID." data-ahh-id="&AHH_ID.">
+  <div class="ni-inner">
+
+    <!-- Row 1: unread dot · doc number · status badge · date -->
+    <div class="ni-row1">
+      <span class="ni-dot"></span>
+      <a href="#" class="ni-doc" onclick="notifView('&AHH_ID.'); return false">&DOC_NUMBER.</a>
+      <span class="ni-badge">&STATUS_LABEL.</span>
+      <span class="ni-time">&NGAY_TAO.</span>
+    </div>
+
+    <!-- Row 2: notification title · dot menu -->
+    <div class="ni-row2">
+      <span class="ni-title">&ANO_NAME.</span>
+      <button type="button" class="ni-menu-btn" onclick="notifMenuOpen(this)" aria-label="Tùy chọn">&#8943;</button>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ============================================================
+  DROPDOWN HTML — Đặt 1 lần trong notif-panel.html (ngoài vòng lặp row)
+  Ví dụ: ngay trước thẻ đóng </div> của #notif-root
+  ============================================================ -->
+
+<div class="ni-dropdown" id="ni-dropdown">
+  <button type="button" class="ni-dd-item dd-view" onclick="notifMenuView()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
+    </svg>
+    Xem chứng từ
+  </button>
+  <button type="button" class="ni-dd-item dd-read" onclick="notifMenuMarkRead()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+    </svg>
+    Đánh dấu đã đọc
+  </button>
+  <div class="ni-dd-sep"></div>
+  <button type="button" class="ni-dd-item dd-del" onclick="notifMenuDelete()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+    </svg>
+    Xóa thông báo
+  </button>
+</div>

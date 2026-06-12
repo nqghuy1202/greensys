@@ -46,6 +46,7 @@
     function handleEvent(data) {
         if (data.type === 'notification') {
             fetchNotifCount();
+            $(document).trigger('apex:notifEvent', [data]);
         } else if (data.type === 'message' || data.type === 'typing' ||
             data.type === 'typing_stop' || data.type === 'read') {
             $(document).trigger('apex:chatEvent', [data]);

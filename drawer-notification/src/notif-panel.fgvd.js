@@ -134,17 +134,12 @@ window.notifInitDropdown = function () {
   menu.addEventListener('mouseleave', scheduleClose);
 };
 
-/* ── SSE integration ───────────────────────────────────────── */
-// Đăng ký listener sau khi SSE channel khởi tạo (chat-server đã live)
-window.notifSSEInit = function (sseSource) {
-  sseSource.addEventListener('notification_new', function (e) {
-    try {
-      var data = JSON.parse(e.data);
-      window.notifBadgeUpdate(data.unread_count);
-      // Nếu drawer đang mở → refresh ngay
-      if (document.getElementById('notif-root').classList.contains('open')) {
-        if (typeof window.notifRefresh === 'function') window.notifRefresh();
-      }
-    } catch (_) {}
-  });
-};
+/* ── SSE integration via apex:notifEvent ──────────────────── */
+// global.js trigger apex:notifEvent khi SSE emit type=notification
+$(document).on('apex:notifEvent', function (_, data) {
+  window.notifBadgeUpdate(data.unread_count);
+  var root = document.getElementById('notif-root');
+  if (root && root.classList.contains('open') && typeof window.notifRefresh === 'function') {
+    window.notifRefresh();
+  }
+});
