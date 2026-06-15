@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Notification Design</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Design System Variables */
+        :root {
+            --bg-surface: #ffffff;
+            --bg-hover: #fafafa; /* Lighter hover for cleaner look */
+            --border-subtle: #f1f5f9;
+            
+            /* Typography */
+            --text-strong: #0f172a; /* Slate 900 */
+            --text-body: #475569;   /* Slate 600 */
+            --text-muted: #94a3b8;  /* Slate 400 */
+            
+            /* Semantic Colors */
+            --accent-blue: #2563eb;
+            --accent-orange: #ea580c;
+            --accent-green: #16a34a;
+            
+            /* Backend Override */
+            --backend-highlight: #d9381e; /* Calibrated red-orange */
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        /* Container mô phỏng Drawer */
+        .drawer-mockup {
+            width: 420px;
+            background: var(--bg-surface);
+            border-radius: 16px;
+            box-shadow: 0 20px 40px -10px rgba(0,0,0,0.1);
+            overflow: hidden;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+
+        /* --- NOTIFICATION ITEM ARCHITECTURE --- */
+        .noti-item {
+            display: flex;
+            padding: 16px 20px;
+            background-color: var(--bg-surface);
+            border-bottom: 1px solid var(--border-subtle);
+            position: relative;
+            transition: background-color 0.2s ease;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .noti-item:hover {
+            background-color: var(--bg-hover);
+        }
+
+        /* 1. Left Indicator Layer */
+        .noti-indicator-zone {
+            width: 12px; /* Fixed width to align content perfectly */
+            display: flex;
+            justify-content: flex-start;
+            padding-top: 6px; /* Align with first line of text */
+        }
+
+        .unread-dot {
+            width: 6px;
+            height: 6px;
+            background-color: var(--accent-blue);
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(37, 99, 235, 0.4);
+        }
+
+        /* 2. Core Content Layer */
+        .noti-content {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px; /* Strict vertical rhythm */
+            padding-right: 12px;
+        }
+
+        /* 2.1 Top Row: Document ID + Status */
+        .noti-top-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .noti-doc-id {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-strong);
+            letter-spacing: -0.01em;
+            /* Nếu là text thường từ backend, ép hiển thị dạng bold */
+        }
+
+        /* Xử lý thẻ <b> từ backend trả về -> Biến thành Text Highlight chứ không dùng màu gắt */
+        .noti-doc-id b, .noti-desc b {
+            font-weight: 600;
+            color: var(--text-strong) !important;
+            background-color: #f1f5f9;
+            padding: 0 4px;
+            border-radius: 4px;
+            font-family: ui-monospace, monospace; /* Monospace cho mã chứng từ trông rất Pro */
+            font-size: 13px;
+        }
+
+        .status-pill {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .status-waiting { color: #b45309; background-color: #fffbeb; } /* Cam nhạt */
+        .status-done { color: #15803d; background-color: #f0fdf4; } /* Xanh nhạt */
+
+        /* 2.2 Middle Row: Business Logic (Nghiệp vụ) + Title */
+        .noti-mid-row {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .noti-business-type {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--accent-orange);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .noti-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-strong);
+            margin: 0;
+        }
+
+        /* 2.3 Bottom Row: Description (Người tạo, chi tiết) */
+        .noti-desc {
+            font-size: 12px;
+            color: var(--text-body);
+            margin: 0;
+            line-height: 1.5;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        /* 3. Right Action Layer: Menu + Time */
+        .noti-action-zone {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: flex-end;
+            min-width: 60px; /* Fixed width */
+        }
+
+        .dot-btn {
+            width: 28px;
+            height: 28px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: -4px; /* Optical alignment */
+            margin-right: -8px; /* Push to edge */
+        }
+        .dot-btn:hover {
+            background-color: var(--border-subtle);
+            color: var(--text-strong);
+        }
+
+        .noti-time {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+
+        /* --- VARIANT: SYSTEM ALERT (Chấm công) --- */
+        /* Khi không có mã chứng từ, Title sẽ lên Top Row */
+        .type-alert .noti-top-row .noti-doc-id {
+            font-family: 'Plus Jakarta Sans', sans-serif; /* Trả về font thường */
+            background: none;
+            padding: 0;
+        }
+        .type-alert .noti-business-type {
+            color: var(--accent-blue);
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="drawer-mockup">
+
+    <!-- DATA TYPE 1: BUSINESS DOCUMENT (Chứng từ) -->
+    <div class="noti-item">
+        <div class="noti-indicator-zone">
+            <div class="unread-dot"></div>
+        </div>
+        
+        <div class="noti-content">
+            <!-- 1. Top: Document ID + Status -->
+            <div class="noti-top-row">
+                <!-- Giả lập backend trả về thẻ <b> cho mã chứng từ -->
+                <div class="noti-doc-id">Chứng từ <b style="color:var(--primary-color, rgb(214, 59, 37));">136030</b></div>
+                <span class="status-pill status-waiting">Chờ xử lý</span>
+            </div>
+            
+            <!-- 2. Mid: Nghiệp vụ + Title -->
+            <div class="noti-mid-row">
+                <!-- Ánh xạ Tên nghiệp vụ lên đây -->
+                <span class="noti-business-type">Phiếu nhập hàng bán bị trả lại</span>
+                <!-- Title từ backend -->
+                <h4 class="noti-title">Thông báo cần xử lý lệnh nhập kho</h4>
+            </div>
+            
+            <!-- 3. Bottom: Description (Nếu có người tạo thì nối vào đây) -->
+            <!-- Giả định không có người tạo trong chuỗi data hiện tại -->
+        </div>
+
+        <div class="noti-action-zone">
+            <button class="dot-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+            </button>
+            <span class="noti-time">30/09/2025</span>
+        </div>
+    </div>
+
+    <!-- DATA TYPE 2: SYSTEM ALERT (Chấm công) -->
+    <div class="noti-item type-alert">
+        <div class="noti-indicator-zone">
+            <div class="unread-dot"></div>
+        </div>
+        
+        <div class="noti-content">
+            <!-- 1. Top: Không có mã chứng từ -> Đưa Title lên đây -->
+            <div class="noti-top-row">
+                <div class="noti-doc-id">Thông báo chấm công</div>
+                <!-- Có thể ẩn status pill nếu System Alert không cần trạng thái -->
+            </div>
+            
+            <!-- 2. Mid: Module Name (Nếu có) -->
+            <div class="noti-mid-row">
+                <span class="noti-business-type">Nhắc nhở hệ thống</span>
+            </div>
+            
+            <!-- 3. Bottom: Description chứa thẻ <b> từ backend -->
+            <p class="noti-desc">Bạn chưa <b style="color:var(--primary-color, rgb(214, 59, 37));">Chấm công vào</b> hôm nay</p>
+        </div>
+
+        <div class="noti-action-zone">
+            <button class="dot-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+            </button>
+            <span class="noti-time">25/04/2025</span>
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>

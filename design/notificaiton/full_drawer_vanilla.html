@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Notification Drawer - Vanilla Edition</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-canvas: #f8fafc;
+            --bg-panel: #ffffff;
+            --border-subtle: #f1f5f9;
+            --border-strong: #e2e8f0;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --text-dim: #94a3b8;
+            --accent-blue: #3b82f6;
+            --accent-emerald: #10b981;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-canvas);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            color: var(--text-main);
+        }
+
+        /* --- DRAWER PANEL --- */
+        .drawer-panel {
+            position: fixed;
+            top: 0;
+            right: 0;
+            height: 100vh;
+            width: 420px;
+            background-color: var(--bg-panel);
+            box-shadow: -10px 0 50px rgba(0, 0, 0, 0.04);
+            border-left: 1px solid var(--border-strong);
+            display: flex;
+            flex-direction: column;
+            z-index: 1000;
+        }
+
+        /* --- STICKY HEADER SECTION --- */
+        .header-sticky {
+            position: sticky;
+            top: 0;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            z-index: 10;
+            padding: 24px 20px 16px 20px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .header-top h2 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
+        .header-top .settings-btn {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 6px;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .header-top .settings-btn:hover {
+            background: var(--bg-canvas);
+            color: var(--text-muted);
+        }
+
+        /* --- SEGMENTED CONTROL (TAB) --- */
+        .tab-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .segmented-control {
+            display: flex;
+            background-color: #f1f5f9;
+            padding: 3px;
+            border-radius: 10px;
+            flex: 1;
+        }
+
+        .tab-item {
+            flex: 1;
+            text-align: center;
+            padding: 8px 0;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-radius: 7px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            user-select: none;
+        }
+
+        .tab-item:hover {
+            color: var(--text-main);
+        }
+
+        .tab-item.active {
+            background-color: #ffffff;
+            color: var(--text-main);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        /* --- QUICK ACTION BUTTON --- */
+        .quick-action-btn {
+            background: none;
+            border: 1px solid var(--border-strong);
+            color: var(--text-muted);
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .quick-action-btn:hover {
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+            background-color: #eff6ff;
+        }
+
+        /* --- NOTIFICATION LIST --- */
+        .noti-list-container {
+            flex: 1;
+            overflow-y: auto;
+            background-color: #ffffff;
+        }
+
+        .group-header {
+            font-size: 10px;
+            font-weight: 800;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            padding: 24px 20px 8px 20px;
+        }
+
+        /* --- NOTI ITEM ROOT (Vanilla Version) --- */
+        .noti-item-root {
+            display: flex;
+            gap: 16px;
+            padding: 16px 20px;
+            background-color: #ffffff;
+            border-bottom: 1px dotted #f1f5f9;
+            transition: background-color 0.2s ease;
+            cursor: pointer;
+        }
+
+        .noti-item-root:hover {
+            background-color: #fafafa;
+        }
+
+        .noti-left {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex-shrink: 0;
+            padding-top: 4px;
+        }
+
+        .unread-dot {
+            width: 6px;
+            height: 6px;
+            background-color: var(--accent-blue);
+            border-radius: 50%;
+            margin-bottom: 12px;
+            display: none;
+        }
+        .is-unread .unread-dot { display: block; }
+
+        .icon-box {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .type-chung-tu { background: #ecfdf5; border: 1px solid #d1fae5; color: #10b981; }
+        .type-he-thong { background: #eff6ff; border: 1px solid #dbeafe; color: #3b82f6; }
+
+        .noti-body {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .meta-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+
+        .status-badge {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .status-waiting { color: #9a3412; background: #fff7ed; border: 1px solid #ffedd5; }
+        .status-approved { color: #166534; background: #f0fdf4; border: 1px solid #dcfce7; }
+
+        .type-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+
+        .noti-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin: 0 0 4px 0;
+            line-height: 1.4;
+        }
+
+        .noti-summary {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        /* Backend Highlight Overrides */
+        .noti-summary b {
+            font-weight: 600;
+            color: var(--text-main) !important;
+            background: #f1f5f9;
+            padding: 1px 4px;
+            border-radius: 4px;
+            font-family: ui-monospace, monospace;
+            border: 1px solid var(--border-strong);
+        }
+
+        .noti-right {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: flex-end;
+            flex-shrink: 0;
+        }
+
+        .timestamp {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-dim);
+        }
+
+        /* Simple Action Dot */
+        .action-dot {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-dim);
+            border-radius: 6px;
+        }
+        .noti-item-root:hover .action-dot {
+            background-color: var(--border-subtle);
+            color: var(--text-muted);
+        }
+
+        /* --- SCROLLBAR CUSTOMIZATION --- */
+        .noti-list-container::-webkit-scrollbar {
+            width: 5px;
+        }
+        .noti-list-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .noti-list-container::-webkit-scrollbar-thumb {
+            background: #e2e8f0;
+            border-radius: 10px;
+        }
+
+        /* --- FOOTER --- */
+        .drawer-footer {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border-subtle);
+            background-color: var(--bg-panel);
+        }
+
+        .view-all-btn {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: none;
+            background-color: var(--bg-canvas);
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .view-all-btn:hover {
+            background-color: #f1f5f9;
+            color: var(--accent-blue);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="drawer-panel">
+        
+        <!-- Header: Sticky & Glass -->
+        <div class="header-sticky">
+            <div class="header-top">
+                <h2>Thông báo</h2>
+                <button class="settings-btn" title="Cài đặt">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+            </div>
+
+            <!-- Tab Container: Segmented + Quick Action -->
+            <div class="tab-container">
+                <div class="segmented-control">
+                    <div class="tab-item active">Chưa đọc</div>
+                    <div class="tab-item">Tất cả</div>
+                </div>
+                
+                <!-- Quick Action: Mark all as read (Chỉ hiện khi ở tab Chưa đọc) -->
+                <button class="quick-action-btn" title="Đánh dấu tất cả là đã đọc">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12l5 5L20 4"/><path d="m7 21 5-5"/><path d="m15 13 5-5"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Scrollable List -->
+        <div class="noti-list-container">
+            
+            <div class="group-header">Hôm nay</div>
+
+            <!-- Mẫu thông báo 1: Chứng từ -->
+            <div class="noti-item-root is-unread">
+                <div class="noti-left">
+                    <div class="unread-dot"></div>
+                    <div class="icon-box type-chung-tu">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/></svg>
+                    </div>
+                </div>
+                <div class="noti-body">
+                    <div class="meta-row">
+                        <span class="status-badge status-approved">Đã duyệt</span>
+                        <span class="type-label">Chứng từ</span>
+                    </div>
+                    <h4 class="noti-title">Hoàn thành duyệt Chứng từ công nợ phải trả.</h4>
+                    <p class="noti-summary">support.gc Đã duyệt chứng từ <b style="color:rgb(214, 59, 37);">PHT-2503/0011</b></p>
+                </div>
+                <div class="noti-right">
+                    <div class="action-dot">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                    </div>
+                    <span class="timestamp">12:30 PM</span>
+                </div>
+            </div>
+
+            <!-- Mẫu thông báo 2: Chấm công -->
+            <div class="noti-item-root is-unread">
+                <div class="noti-left">
+                    <div class="unread-dot"></div>
+                    <div class="icon-box type-he-thong">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="m9 16 2 2 4-4"/></svg>
+                    </div>
+                </div>
+                <div class="noti-body">
+                    <div class="meta-row">
+                        <span class="status-badge status-waiting">Nhắc nhở</span>
+                        <span class="type-label">Hệ thống</span>
+                    </div>
+                    <h4 class="noti-title">Thông báo chấm công</h4>
+                    <p class="noti-summary">Bạn chưa <b style="color:rgb(214, 59, 37);">Chấm công vào</b> hôm nay</p>
+                </div>
+                <div class="noti-right">
+                    <div class="action-dot">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                    </div>
+                    <span class="timestamp">08:00 AM</span>
+                </div>
+            </div>
+
+            <div class="group-header">Hôm qua</div>
+
+            <!-- Mẫu thông báo 3: Đã đọc -->
+            <div class="noti-item-root" style="opacity: 0.6;">
+                <div class="noti-left">
+                    <div class="icon-box" style="background: #f8fafc; border: 1px solid #e2e8f0; color: #94a3b8;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    </div>
+                </div>
+                <div class="noti-body">
+                    <div class="meta-row">
+                        <span class="type-label">Bảo mật</span>
+                    </div>
+                    <h4 class="noti-title">Yêu cầu đổi mật khẩu định kỳ</h4>
+                    <p class="noti-summary">Hệ thống ghi nhận bạn chưa đổi mật khẩu trong 90 ngày qua.</p>
+                </div>
+                <div class="noti-right">
+                    <div class="action-dot">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                    </div>
+                    <span class="timestamp">15/06</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Footer -->
+        <div class="drawer-footer">
+            <button class="view-all-btn">Xem tất cả thông báo</button>
+        </div>
+
+    </div>
+
+</body>
+</html>

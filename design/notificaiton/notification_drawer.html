@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Notification Center - Light Theme</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc; /* Slate 50 */
+            color: #1e293b; /* Slate 800 */
+        }
+        .drawer-panel {
+            background: #ffffff;
+            border-left: 1px solid #e2e8f0;
+            box-shadow: -4px 0 20px rgba(0, 0, 0, 0.02);
+        }
+        
+        .noti-item {
+            transition: background-color 0.2s ease;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .noti-item:hover {
+            background: #fbfbfb;
+        }
+
+        /* Highlight style for <b> from backend */
+        .noti-item b {
+            font-weight: 600;
+            color: #1e293b !important;
+            background: #f1f5f9;
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.92em;
+            border: 1px solid #e2e8f0;
+        }
+
+        /* Dropdown Menu Style - Minimalist */
+        .dropdown-menu {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            border-radius: 8px;
+            min-width: 180px;
+            z-index: 100;
+        }
+
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            font-size: 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            color: #64748b; /* Slate 500 */
+        }
+        .dropdown-item:hover {
+            background: #f8fafc;
+            color: #1e293b;
+        }
+
+        /* Status Badges - Pastel Palette */
+        .u-badge {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .status-W { color: #9a3412; background: #fff7ed; border: 1px solid #ffedd5; } /* Orange */
+        .status-N { color: #166534; background: #f0fdf4; border: 1px solid #dcfce7; } /* Green */
+        .status-R { color: #991b1b; background: #fef2f2; border: 1px solid #fee2e2; } /* Red */
+
+        .unread-indicator {
+            width: 6px;
+            height: 6px;
+            background-color: #3b82f6;
+            border-radius: 50%;
+        }
+
+        /* Group Header */
+        .group-header {
+            font-size: 10px;
+            font-weight: 800;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            padding: 20px 20px 8px 20px;
+        }
+    </style>
+</head>
+<body class="overflow-hidden">
+
+    <!-- Drawer Panel -->
+    <div class="fixed top-0 right-0 h-full w-[420px] drawer-panel z-50 flex flex-col">
+        
+        <!-- Header -->
+        <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+            <div>
+                <h2 class="text-base font-bold text-slate-900">Thông báo</h2>
+                <p class="text-[11px] text-slate-400 mt-0.5 font-medium">3 thông báo chưa đọc</p>
+            </div>
+            
+            <!-- Global Actions -->
+            <div class="relative group">
+                <button class="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all">
+                    <i data-lucide="settings-2" class="w-4 h-4 text-slate-400"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Notification List -->
+        <div class="flex-1 overflow-y-auto pb-10">
+            
+            <div class="group-header">Mới nhất</div>
+
+            <!-- Item 1: Duyệt Chứng Từ (Theo quy trình) -->
+            <div class="noti-item px-5 py-4 flex gap-4 items-stretch relative">
+                <!-- Left Indicator Zone -->
+                <div class="flex flex-col items-center flex-shrink-0 pt-1.5">
+                    <div class="unread-indicator mb-3"></div>
+                    <div class="w-9 h-9 rounded-lg bg-emerald-50/50 border border-emerald-100 flex items-center justify-center">
+                        <i data-lucide="file-check" class="w-4.5 h-4.5 text-emerald-600"></i>
+                    </div>
+                </div>
+                
+                <!-- Content Zone -->
+                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="u-badge status-N">Đã duyệt</span>
+                        <span class="text-[10px] font-semibold text-slate-300 uppercase tracking-wider">Chứng từ</span>
+                    </div>
+                    <h4 class="text-[13px] font-bold text-slate-800 leading-snug">Thông báo hoàn thành duyệt Chứng từ công nợ phải trả.</h4>
+                    <p class="text-[12px] text-slate-500 mt-1 leading-relaxed">
+                        support.gc Đã duyệt chứng từ <b style="color:var(--primary-color, rgb(214, 59, 37));">PHT-2503/0011</b>
+                    </p>
+                </div>
+
+                <!-- Action Zone (Vertical Alignment) -->
+                <div class="flex flex-col justify-between items-end flex-shrink-0 py-0.5">
+                    <div class="relative group/menu">
+                        <button class="p-1 rounded-md hover:bg-slate-100 text-slate-300 hover:text-slate-500 transition-colors">
+                            <i data-lucide="more-horizontal" class="w-4 h-4"></i>
+                        </button>
+                        <div class="absolute right-0 mt-1 dropdown-menu p-1 hidden group-hover/menu:block">
+                            <div class="dropdown-item">
+                                <i data-lucide="eye" class="w-3.5 h-3.5"></i> Xem chi tiết
+                            </div>
+                            <div class="dropdown-item">
+                                <i data-lucide="check" class="w-3.5 h-3.5"></i> Đánh dấu đã đọc
+                            </div>
+                        </div>
+                    </div>
+                    <span class="text-[10px] text-slate-400 font-semibold">12:30 PM</span>
+                </div>
+            </div>
+
+            <!-- Item 2: Chấm Công (Hệ thống) -->
+            <div class="noti-item px-5 py-4 flex gap-4 items-stretch relative">
+                <div class="flex flex-col items-center flex-shrink-0 pt-1.5">
+                    <div class="unread-indicator mb-3"></div>
+                    <div class="w-9 h-9 rounded-lg bg-blue-50/50 border border-blue-100 flex items-center justify-center">
+                        <i data-lucide="calendar-clock" class="w-4.5 h-4.5 text-blue-600"></i>
+                    </div>
+                </div>
+                
+                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="u-badge status-W">Nhắc nhở</span>
+                        <span class="text-[10px] font-semibold text-slate-300 uppercase tracking-wider">Hệ thống</span>
+                    </div>
+                    <h4 class="text-[13px] font-bold text-slate-800 leading-snug">Thông báo chấm công</h4>
+                    <p class="text-[12px] text-slate-500 mt-1 leading-relaxed">
+                        Bạn chưa <b style="color:var(--primary-color, rgb(214, 59, 37));">Chấm công vào</b> hôm nay
+                    </p>
+                </div>
+
+                <div class="flex flex-col justify-between items-end flex-shrink-0 py-0.5">
+                    <div class="relative group/menu">
+                        <button class="p-1 rounded-md hover:bg-slate-100 text-slate-300 hover:text-slate-500 transition-colors">
+                            <i data-lucide="more-horizontal" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                    <span class="text-[10px] text-slate-400 font-semibold">08:00 AM</span>
+                </div>
+            </div>
+
+            <div class="group-header">Hôm qua</div>
+
+            <!-- Item 3: Đã đọc -->
+            <div class="noti-item px-5 py-4 flex gap-4 items-stretch relative opacity-60">
+                <div class="flex flex-col items-center flex-shrink-0 pt-1.5">
+                    <div class="w-1.5 h-1.5 mb-3"></div> <!-- Empty spacer for alignment -->
+                    <div class="w-9 h-9 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center">
+                        <i data-lucide="file-text" class="w-4.5 h-4.5 text-slate-400"></i>
+                    </div>
+                </div>
+                
+                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="u-badge bg-slate-100 text-slate-500 border-slate-200">Đã xong</span>
+                    </div>
+                    <h4 class="text-[13px] font-medium text-slate-600 leading-snug">Đơn hàng #SO-0029 đã giao thành công</h4>
+                    <p class="text-[12px] text-slate-400 mt-1 leading-relaxed">Khách hàng: Công ty TNHH Minh Phát</p>
+                </div>
+
+                <div class="flex flex-col justify-between items-end flex-shrink-0 py-0.5">
+                    <div class="relative group/menu">
+                        <button class="p-1 rounded-md hover:bg-slate-100 text-slate-300 transition-colors">
+                            <i data-lucide="more-horizontal" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                    <span class="text-[10px] text-slate-400 font-semibold">15/06</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Minimal Footer -->
+        <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-100">
+            <button class="w-full py-2 text-[11px] font-bold text-slate-500 hover:text-blue-600 transition-colors uppercase tracking-widest">
+                Xem tất cả thông báo
+            </button>
+        </div>
+
+    </div>
+
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

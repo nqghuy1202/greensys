@@ -12,10 +12,11 @@ Notification Drawer Panel cho hệ thống ERP APEX Oracle 24.2. Tích hợp và
 ## Xem UI (không cần build/server)
 
 ```
-src/notification-page.html      — full page preview
-src/drawer-notification.html    — drawer tích hợp
-src/notif-item-v2-demo.html     — TC row + hover + dot menu
-src/notif-read-filter-demo.html — segmented control tabs
+src/notification-page.html         — full page preview JSX drawer
+src/drawer-notification.html       — drawer tích hợp
+src/notif-item-v2-demo.html        — TC row + hover + dot menu
+src/notif-read-filter-demo.html    — segmented control tabs
+Notification Slide Panel v3.html   — thiết kế mới nhất (tham khảo)
 ```
 
 ## Kiến trúc APEX — Nơi paste từng file
@@ -41,9 +42,55 @@ Template Component (TC — trang thông báo riêng, load trong iframe dialog)
 ├── Row Template                ← notif-item-apex.html
 ├── CSS Inline                  ← notif-item-apex.css
 └── FGVD                        ← notif-item-apex.js   (tất cả TC logic gom vào đây)
+
+TC Page — Static Content Region (Before Footer)
+└── #ni-dropdown singleton HTML  (KHÔNG đặt trong Row Template — render 1 lần duy nhất)
+TC Page — Static Content Region
+└── src/notif-bulk-actions.html  (.nba-wrap + #nba-menu)
 ```
 
 **`notif-move-btn.js`** — version cũ standalone của `moveNotifButtons()`, đã được tích hợp vào `notif-item-apex.js`. Không dùng song song.
+
+## TC Row Template — Layout v3 (hiện tại)
+
+Layout 3 cột: **Left (dot + icon)** | **Middle (badge + title + summary)** | **Right (menu + time)**
+
+```html
+<div class="ni noti-row &IS_READ_CSS. read-&IS_READ."
+     data-ano-id="&ANO_ID." data-ahh-id="&AHH_ID."
+     onclick="notifItemClick(event, this)" style="cursor:pointer;">
+  <div class="noti-left">
+    <div class="ni-dot unread-dot"></div>
+    <div class="icon-box &TYPE_CSS.">&ICON_SVG!RAW.</div>
+  </div>
+  <div class="noti-body">
+    <div class="meta-info">
+      <span class="badge &STATUS_CSS.">&STATUS_LABEL.</span>
+      <span class="type-label">&TYPE_NOTIFY.</span>
+    </div>
+    <h4 class="title">&ANO_NAME.</h4>
+    <div class="summary">&ANO_SUMMARY!RAW.</div>
+  </div>
+  <div class="noti-right">
+    <button type="button" class="btn-more ni-menu-btn" onclick="notifMenuOpen(this)">⋯</button>
+    <div class="time">&NGAY_TAO.</div>
+  </div>
+</div>
+```
+
+SQL phải trả thêm cột:
+```sql
+case when uno.read = 'N' then 'is-unread' else 'is-read' end as is_read_css,
+case when ahh.ahh_id is null then 'type-he-thong' else 'type-chung-tu' end type_css,
+case when ahh.ahh_id is null
+  then '<span aria-hidden="true" class="fa fa-alarm-check"></span>'
+  else '<span class="fa fa-file-text-o" aria-hidden="true"></span>'
+end icon_svg
+```
+
+Bỏ 2 JOIN thừa trong TC SQL:
+- `LEFT JOIN app_users` — dùng `uno.aus_id` trực tiếp (`app_users` là remote DBLINK, rất tốn kém)
+- `LEFT JOIN menus` — không dùng cột nào
 
 ## JSX Load Chain
 
@@ -87,6 +134,7 @@ React/ReactDOM/Babel phải load xong trước bước 2 — load sequentially t
 | `window.notifBulkMenuOpen/ScheduleClose/CancelClose` | Hover open/close cho `#Btn_BulkAction` |
 | `window.notifBulkMarkAll/DeleteAll` | Bulk actions |
 | `notifSetReadType(radio)` | Set page item READ khi đổi tab filter |
+| `notifItemClick(event, el)` | Click row → navigate (bỏ qua click trên `.ni-menu-btn`) |
 
 ## notif-item-apex.js — Cấu trúc
 
@@ -94,7 +142,7 @@ File này là toàn bộ FGVD của TC page. Thứ tự khai báo quan trọng:
 
 1. `apexBulkProcess(name)` — helper chung: `apex.server.process` + refresh `Cr_Ano`
 2. `moveNotifButtons()` — detach `#Btn_BulkAction` + `#nba-menu` → parent titlebar
-3. `notifSetReadType / notifSetReadFilter / notifNavigate / notifItemClick` — helpers
+3. `notifSetReadType / notifNavigate / notifItemClick` — helpers
 4. Dot menu IIFE — `notifMenuOpen/View/MarkRead/Delete` + outside-click handler
 5. SSE IIFE — bind `apex:notifEvent.tc` lên parent jQuery
 6. Bulk menu IIFE — `notifBulkMenuOpen/ScheduleClose/CancelClose/MarkAll/DeleteAll`
@@ -107,32 +155,34 @@ TC page load trong iframe bên trong `.ui-dialog`. Hàm này:
 2. Detach `#Btn_BulkAction` (`.nba-wrap`) + `#nba-menu` khỏi iframe
 3. Insert vào titlebar trước `.ui-dialog-titlebar-close`
 4. Inject CSS hardcode của `nba-*` vào `parent.document` (không dùng `cssRules` — APEX stylesheet cross-origin bị chặn)
-5. Rewire `onmouseenter/leave/click` → `iframeWin.*` (inline attr chạy trong parent scope sau khi move)
+5. Rewire `onmouseenter/leave/click` → `iframeWin.*`
 
-`#nba-menu` phải move sang `parent.document.body` (không chỉ titlebar) vì `position:fixed` tính theo viewport của document chứa element — nếu còn trong iframe, menu bị cắt bởi `overflow:hidden` của dialog.
+`#nba-menu` phải move sang `parent.document.body` vì `position:fixed` tính theo viewport của document chứa element — nếu còn trong iframe, menu bị cắt bởi `overflow:hidden` của dialog.
+
+**`#nba-menu` HTML không được có inline `onmouseenter`/`onmouseleave`** — sau khi move sang parent.document, các inline attribute chạy trong parent.window scope (không tìm thấy function). `moveNotifButtons()` đã rewire qua `.onmouseenter = function(){}` nên không cần inline.
 
 ## Template Component (TC) — Cơ chế
 
-SQL trả các field: `STATUS_CSS`, `IS_READ`, `DOC_NUMBER`, `STATUS_LABEL`, `NGAY_TAO`, `ANO_NAME`, `JES_NAME`, `ANO_ID`, `AHH_ID`.
-
-Row template dùng substitution `&FIELD.`:
-```html
-<div class="ni &STATUS_CSS. read-&IS_READ." data-ano-id="&ANO_ID." data-ahh-id="&AHH_ID.">
-```
+SQL substitution `&FIELD.` — các cột bắt buộc: `IS_READ_CSS`, `IS_READ`, `ANO_ID`, `AHH_ID`, `TYPE_CSS`, `ICON_SVG`, `STATUS_CSS`, `STATUS_LABEL`, `TYPE_NOTIFY`, `ANO_NAME`, `ANO_SUMMARY`, `NGAY_TAO`.
 
 **Read filter tab** (segmented control `.ntt-track`):
-- `onchange` → `notifSetReadType(this)` → `apex.item('P' + pageId + '_READ').setValue(value)`
+- `onclick` → `notifSetReadType(this)` → `apex.item('P' + pageId + '_READ').setValue(value)`
 - KHÔNG gọi `window.notifSetReadFilter` — hàm đó JSX-only, gây lỗi `querySelectorAll` null ở TC page
 - DA trên item `_READ` Change event → refresh TC region
 
 **Dot menu** (`#ni-dropdown` singleton `position:fixed`):
-- `_justOpened` flag + `setTimeout(0)` — tránh document click listener đóng menu ngay sau mở (`stopPropagation` inline không đủ tin cậy trong APEX)
-- `getDropdown()` dùng `!_dd.isConnected` — re-query sau khi region refresh/pagination thay thế DOM
+- Đặt trong Static Content Region riêng trên TC page — không đặt trong Row Template (sẽ render N lần)
+- `position: fixed` bắt buộc — tọa độ lấy từ `getBoundingClientRect()` là viewport-relative
+- `top = r.bottom + 4` (không cộng `scrollY` — chỉ dùng với `position:absolute`)
+- `_justOpened` flag + `setTimeout(0)` — tránh document click listener đóng menu ngay sau mở
+- `getDropdown()` dùng `!_dd.isConnected` — re-query sau khi region refresh thay thế DOM
 - `_activeItem` lưu `{ anoId, ahhId, el }` từ `dataset` string — không lưu DOM reference trực tiếp
 
-**Bulk menu position:** dùng `right: clientWidth - r.right` (không dùng `left`) — button nằm góc phải titlebar, dùng `left` sẽ tràn ra ngoài viewport.
+**Bulk menu position:** dùng `right: clientWidth - r.right` (không dùng `left`) — button nằm góc phải titlebar.
 
 **SSE listener:** `.off('apex:notifEvent.tc').on('apex:notifEvent.tc', ...)` — namespace `.tc` tránh listener tích lũy khi iframe reload nhiều lần.
+
+**Click navigate:** `.ni` row phải có `onclick="notifItemClick(event, this)"` — thiếu thì click không navigate.
 
 ## JSX Component Architecture
 
@@ -148,9 +198,9 @@ Row template dùng substitution `&FIELD.`:
 
 ## Data Source
 
-**Tables (local):** `app_notifications (ano)`, `user_notifications (uno)`, `approval_histories_headers (ahh)`, `je_sources (jes)`, `domain (dom)`
+**Tables (local):** `app_notifications (ano)`, `user_notifications (uno)`, `approval_histories_headers (ahh)`, `domain (dom)`
 
-**Remote via DBLINK:** `app_users` — luôn dùng `/*+ MATERIALIZE */` trong CTE.
+**Remote via DBLINK:** `app_users` — tránh JOIN trực tiếp, dùng `uno.aus_id` thay `aus.aus_id`. Nếu bắt buộc join thì dùng `/*+ MATERIALIZE */` trong CTE.
 
 **Soft delete:** `notifDelete` set `uno.deleted='Y'`. `notifMarkRead` set `uno.read='Y'`.
 
@@ -174,9 +224,10 @@ SELECT aus_id INTO l_aus_id FROM remote_user;
 | C | `status-expired` | `#9CA3AF` |
 | O | `status-processing` | `#0091F7` |
 | L / F | `status-supplement` | `#7C3AED` |
-| Y | `status-y` | `#2563EB` |
+| Y | `status-complete` | `#2563EB` |
 | I | `status-i` | `#D100BC` |
-| A | `status-a` | `#84740C` |
+| A | `status-give-back` | `#84740C` |
+| S (system) | `status-waiting` | fallback |
 
 Thêm status mới: cập nhật đồng thời SQL CASE, `NS_CONFIG` trong JSX, và CSS.
 
@@ -197,9 +248,12 @@ Server emit `notification_new` với payload `{ unread_count, aus_id }` → badg
 - **`type="button"`** trên mọi `<button>` — tránh submit `wwvFlowForm`
 - **`RETURNING CLOB`** trong `JSON_ARRAYAGG` khi list > ~10 items
 - **`uno.read`** so sánh bằng string `!== 'Y'`, không phải boolean
-- **CSS inject cross-origin:** không dùng `stylesheet.cssRules` để copy CSS sang parent — bị chặn. Hardcode CSS string trực tiếp
+- **CSS inject cross-origin:** không dùng `stylesheet.cssRules` để copy CSS sang parent — bị chặn. Hardcode CSS string trực tiếp trong `moveNotifButtons()`
 - **`notifSetReadFilter`** chỉ dùng được trong JSX drawer — gọi từ TC page gây `querySelectorAll` null
-- **Hover CSS** dùng `color-mix(in srgb, var(--fourth-color, #E1F0EB) 50%, white)` để pha nhạt
+- **`#ni-dropdown` phải `position:fixed`** — không phải `absolute`. Top tính từ `r.bottom + 4` (không cộng `scrollY`)
+- **`#nba-menu` không có inline onmouseenter/onmouseleave** — sau khi move sang parent.document, attribute chạy trong parent.window scope gây `ReferenceError`
+- **`onclick` trên `.ni` row bắt buộc** — thiếu `onclick="notifItemClick(event, this)"` thì click không navigate
+- **Bỏ JOIN `app_users` và `menus` khỏi TC SQL** — `app_users` là remote DBLINK (tốn kém), `menus` không dùng cột nào
 
 ## Setup đầy đủ
 
