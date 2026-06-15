@@ -14,6 +14,7 @@ chat-system/
   chat-page.onload.js   ← paste vào "Execute when Page Loads" (chỉ window.csInit())
   chat-page.css         ← paste vào Page → CSS → Inline
   global.js             ← Theme global JS (SSE client + notification bell)
+  sse-worker.js         ← SharedWorker — upload lên Static Application Files
   docs/
     da-setup.md         Bảng 22 Dynamic Actions + checklist deploy
     native.sql          9 page-level Ajax Callbacks SQL đầy đủ
@@ -97,15 +98,26 @@ apex:chatEvent listener (giữ trong FGVD, không làm DA):
 
 3 binding giữ trong FGVD (không làm DA): `apex:chatEvent`, outside-click `closeTypeMenu`, outside-click `closeConvMenu`. DA không dùng `document`-level events vì thứ tự chạy mong manh với `stopPropagation`.
 
-## global.js — SSE Client & Notification Bell
+## global.js + sse-worker.js — SSE Client & Notification Bell
 
-`global.js` chạy trên **mọi page** (inject qua Theme). Trách nhiệm:
-- Mint SSE token qua `apex.server.process('sseToken')` → kết nối `EventSource` đến `https://chattest.erp100.vn/api/sse`
-- `handleEvent`: `notification` → `fetchNotifCount()`; `message/typing/read` → trigger `apex:chatEvent` trên document
-- Inject badge `#notif-badge` vào `.user-notificaiton` (typo trong APEX — 1 chữ i)
-- `chatHeartbeat` mỗi 20s → track online presence
+`global.js` chạy trên **mọi page** (inject qua Theme). Dùng **SharedWorker** (`sse-worker.js`) để tối ưu multi-tab:
 
-`sseToken` và `notificationCount` phải là **Application Process** (không pageId) vì global.js chạy trên mọi page.
+```
+Tab A ──┐
+Tab B ──┼── MessagePort ──► sse-worker.js (SharedWorker)
+Tab C ──┘                       │
+                                ├── 1 SSE connection duy nhất (EventSource)
+                                ├── Token cache — mint lại khi còn < 30s TTL
+                                └── heartbeat_tick → chỉ ports[0] gửi chatHeartbeat
+```
+
+**Flow mint token:** Worker không có APEX session → gửi `mint_token` tới `ports[0]` → tab gọi `apex.server.process('sseToken', { x01: $v('P0_AUS_ID') })` → trả kết quả về worker.
+
+**Deploy prerequisite:** `window.APP_FILES = '#APP_FILES#'` phải có trong **Page 0 FGVD** (apex.env.APP_FILES = undefined trong APEX 24.2). Worker URL = `window.APP_FILES + 'sse-worker.js'`.
+
+`sseToken` và `notificationCount` là **Application Process** (không pageId) vì global.js chạy trên mọi page.
+
+**Tab liveliness:** Tab ping worker mỗi 25s. Worker prune port chết (không ping > 50s) trước mỗi heartbeat tick.
 
 ## :APP_USER Pattern (bắt buộc trong mọi callback)
 
@@ -136,3 +148,7 @@ Xem chi tiết trong `docs/oracle-db.md` (thư mục cha). Tóm tắt: mọi que
 **chatPin không relay Node:** Ghim là trạng thái riêng mỗi user (`CHAT_PARTICIPANTS.is_pinned`) — cập nhật local DB trực tiếp, không push SSE event.
 
 **chatContactsHtml — không bọc container:** Callback chỉ trả HTML bên trong `#cs-member-suggest-list`, KHÔNG bọc lại thẻ `<div id="cs-member-suggest-list">` — sẽ trùng ID và lồng sai.
+
+**sseToken trả chuỗi rỗng:** Nguyên nhân phổ biến là `:G_AUS_ID` = NULL (unreliable trong Application Process). Fix: truyền `x01: $v('P0_AUS_ID')` từ JS, SQL dùng `COALESCE(NULLIF(TO_NUMBER(apex_application.g_x01), 0), TO_NUMBER(:G_AUS_ID))`.
+
+**SharedWorker không reload khi sửa file:** Browser cache worker aggressively. Để force reload: `chrome://inspect/#workers` → Terminate, hoặc đóng hết tab rồi mở lại.

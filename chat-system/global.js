@@ -5,6 +5,51 @@
 
     var SSE_URL = 'https://chattest.erp100.vn/api/sse';
 
+    // ── SharedWorker ──────────────────────────────────────────────────────────
+
+    var _port = null;
+
+    function initWorker() {
+        var workerUrl = (window.APP_FILES || '') + 'sse-worker.js';
+        try {
+            var worker = new SharedWorker(workerUrl);
+            _port = worker.port;
+        } catch (e) {
+            console.error('[SSE] SharedWorker not supported:', e);
+            return;
+        }
+
+        _port.onmessage = function (ev) {
+            var msg = ev.data;
+            if (msg.type === 'mint_token') {
+                // Worker yêu cầu tab này mint token (tab này đang là leader)
+                apex.server.process('sseToken', { x01: $v('P0_AUS_ID') }, {
+                    dataType: 'text',
+                    success: function (token) {
+                        _port.postMessage({ type: 'token_response', token: (token || '').trim() });
+                    },
+                    error: function () {
+                        _port.postMessage({ type: 'token_response', token: '' });
+                    }
+                });
+            } else if (msg.type === 'heartbeat_tick') {
+                // Worker chọn tab này gửi heartbeat chu kỳ này
+                apex.server.process('chatHeartbeat', {});
+            } else {
+                handleEvent(msg);
+            }
+        };
+
+        _port.start();
+        _port.postMessage({ type: 'init', sseUrl: SSE_URL });
+
+        // Heartbeat đầu tiên ngay lập tức, các lần sau do worker điều phối
+        apex.server.process('chatHeartbeat', {});
+
+        // Ping worker định kỳ để worker biết tab này còn sống
+        setInterval(function () { _port.postMessage({ type: 'ping' }); }, 25000);
+    }
+
     // ── Notification badge ────────────────────────────────────────────────────
 
     function updateNotifBadge(count) {
@@ -53,70 +98,6 @@
         }
     }
 
-    // ── SSE client ────────────────────────────────────────────────────────────
-
-    var _lastId     = 0;
-    var _sseBackoff = 5000;
-    var _sseTimer   = null;
-
-    function mintToken(callback) {
-        apex.server.process('sseToken', {}, {
-            dataType: 'text',
-            success: function (token) {
-                token = (token || '').trim();
-                if (token && token.indexOf('.') > 0) {
-                    callback(token);
-                } else {
-                    console.warn('[SSE] sseToken invalid:', token);
-                    scheduleReconnect();
-                }
-            },
-            error: function () {
-                console.warn('[SSE] sseToken error');
-                scheduleReconnect();
-            }
-        });
-    }
-
-    function scheduleReconnect() {
-        _sseTimer = setTimeout(connectSSE, _sseBackoff);
-        _sseBackoff = Math.min(_sseBackoff * 2, 60000);
-    }
-
-    function connectSSE() {
-        _sseTimer = null;
-        mintToken(function (token) {
-            var url = SSE_URL + '?token=' + encodeURIComponent(token) +
-                '&lastEventId=' + _lastId;
-            var es = new EventSource(url);
-
-            es.onopen = function () {
-                _sseBackoff = 5000;
-                console.log('[SSE] connected');
-            };
-
-            es.onmessage = function (ev) {
-                if (ev.lastEventId) _lastId = ev.lastEventId;
-                try {
-                    var data = JSON.parse(ev.data);
-                    handleEvent(data);
-                } catch (_) { }
-            };
-
-            // Server đẩy ra khi có conn mới hơn cùng user — re-mint token ngay
-            es.addEventListener('replaced', function () {
-                es.close();
-                _sseTimer = setTimeout(connectSSE, 3000);
-            });
-
-            es.onerror = function () {
-                // KHÔNG dựa vào auto-reconnect của EventSource — token cũ TTL 120s → kẹt 401
-                es.close();
-                scheduleReconnect();
-            };
-        });
-    }
-
     // ── Init ──────────────────────────────────────────────────────────────────
 
     $(document).ready(function () {
@@ -127,9 +108,6 @@
 
         initNotifBell();
         fetchNotifCount();
-        connectSSE();
-
-        apex.server.process('chatHeartbeat', {});
-        setInterval(function () { apex.server.process('chatHeartbeat', {}); }, 20000);
+        initWorker();
     });
 })();
