@@ -1,0 +1,507 @@
+<!-- ════════════════════════════════════════════════════════════════════
+  doc-chat.html — Doc Chat Modal body fragment
+  Upload to APEX: Shared Components → Static Application Files
+
+  HOW TO LOAD:
+  1. APEX page Static Content region:
+       <div id="doc-chat-root"></div>
+  2. Page → CSS → File URLs:
+       #APP_IMAGES#doc-chat.css
+  3. FGVD (doc-chat-page.fgvd.js) dcInit() fetches this file via:
+       fetch(apex.env.APP_IMAGES + 'doc-chat.html')
+
+  NOTE: This is a fragment — no DOCTYPE/html/head/body.
+        onclick handlers reference window.dcOn* defined in FGVD.
+        Event listeners that need setup run in dcInit() after injection.
+════════════════════════════════════════════════════════════════════ -->
+
+<div class="dc-layout">
+
+  <!-- ════════════════════════════════
+       LEFT PANEL — 268px slider
+       ════════════════════════════════ -->
+  <div class="dc-left">
+    <div id="lp-track">
+
+      <!-- ── S1: Conversation list ──────────────────────────── -->
+      <div id="lp-s1">
+
+        <div class="lp-header">
+          <div style="display:flex;align-items:center;gap:9px;">
+            <div style="width:28px;height:28px;border-radius:8px;background:var(--c-main);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="white">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <span class="lp-title">Hội thoại</span>
+          </div>
+          <button type="button" class="dc-icon-btn" title="Tạo hội thoại mới"
+            onclick="window.dcOnOpenDM(this,event)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="dc-search-wrap">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <input type="text" id="dc-conv-search" placeholder="Tìm hội thoại..."
+            oninput="window.dcOnConvSearch(this,event)" autocomplete="off">
+        </div>
+
+        <div class="dc-filter-tabs">
+          <button type="button" class="dc-filter-tab active" data-filter="ALL"
+            onclick="window.dcOnFilter(this,event)">Tất cả</button>
+          <button type="button" class="dc-filter-tab" data-filter="DOC"
+            onclick="window.dcOnFilter(this,event)">Chứng từ</button>
+          <button type="button" class="dc-filter-tab" data-filter="CHANNEL"
+            onclick="window.dcOnFilter(this,event)">Nhóm</button>
+          <button type="button" class="dc-filter-tab" data-filter="DM"
+            onclick="window.dcOnFilter(this,event)">Cá nhân</button>
+        </div>
+
+        <!-- Populated by dcConvListHtml callback -->
+        <div id="lp-conv-list" class="thin-scroll">
+          <div class="dc-loading">Đang tải...</div>
+        </div>
+
+      </div><!-- /lp-s1 -->
+
+      <!-- ── S2: New DM — Contact picker ────────────────────── -->
+      <div id="lp-s2">
+
+        <div class="lp-s-header">
+          <button type="button" class="dc-icon-btn" style="width:30px;height:30px;"
+            onclick="window.dcOnCloseCompose(this,event)" title="Quay lại">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+          </button>
+          <span class="lp-s-title">Hội thoại mới</span>
+        </div>
+
+        <div class="dc-search-wrap" style="padding-top:12px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <input type="text" id="lp-s2-search" placeholder="Tìm theo tên..."
+            oninput="window.dcOnContactSearch(this,event)" autocomplete="off">
+        </div>
+
+        <div id="lp-online-strip"></div>
+
+        <!-- Populated by dcContactsHtml callback (DM format) -->
+        <div id="lp-s2-list" class="thin-scroll" style="flex:1;overflow-y:auto;padding:4px 8px 8px;">
+          <div class="dc-loading">Đang tải...</div>
+        </div>
+
+        <div style="padding:12px;border-top:1px solid var(--n-200);flex-shrink:0;">
+          <button type="button" class="dc-btn-primary"
+            onclick="window.dcOnGoToGroupMembers(this,event)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            Tạo nhóm
+          </button>
+        </div>
+
+      </div><!-- /lp-s2 -->
+
+      <!-- ── S3: Group — Member selection ───────────────────── -->
+      <div id="lp-s3">
+
+        <div class="lp-s-header">
+          <button type="button" class="dc-icon-btn" style="width:30px;height:30px;"
+            onclick="window.dcOnGroupBack(this,event)" title="Quay lại">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+          </button>
+          <span class="lp-s-title">Thêm thành viên</span>
+          <span class="lp-s-step-pill">1/2</span>
+        </div>
+
+        <!-- Member chips — populated by renderChips() in FGVD -->
+        <div id="lp-s3-chips"></div>
+
+        <div class="dc-search-wrap" style="padding-top:10px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <input type="text" id="lp-s3-search" placeholder="Tìm thành viên..."
+            oninput="window.dcOnContactSearch(this,event)" autocomplete="off">
+        </div>
+
+        <!-- Populated by dcContactsHtml callback (GROUP format) -->
+        <div id="lp-s3-list" class="thin-scroll" style="flex:1;overflow-y:auto;padding:4px 8px;">
+          <div class="dc-loading">Đang tải...</div>
+        </div>
+
+        <div class="lp-gm-footer">
+          <span class="lp-gm-count">Chọn thành viên</span>
+          <button type="button" class="lp-gm-next"
+            onclick="window.dcOnGroupNext(this,event)">
+            Tiếp theo
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </button>
+        </div>
+
+      </div><!-- /lp-s3 -->
+
+      <!-- ── S4: Group info form ─────────────────────────────── -->
+      <div id="lp-s4">
+
+        <div class="lp-s-header" style="position:sticky;top:0;background:var(--n-50);z-index:1;">
+          <button type="button" class="dc-icon-btn" style="width:30px;height:30px;"
+            onclick="window.dcOnGroupInfoBack(this,event)" title="Quay lại">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+          </button>
+          <span class="lp-s-title">Nhóm mới</span>
+          <span class="lp-s-step-pill" style="background:#F0FDF4;color:#16A34A;">2/2</span>
+        </div>
+
+        <div class="lp-gi-av-wrap">
+          <div class="lp-gi-av lp-av-empty" id="lp-gi-av">
+            <svg id="lp-av-empty-icon" width="22" height="22" viewBox="0 0 24 24" fill="none"
+              stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+            <div id="lp-av-initials" class="lp-gi-av-letters"></div>
+          </div>
+          <span class="lp-gi-av-label">Ảnh nhóm</span>
+        </div>
+
+        <div class="lp-gi-field lp-gi-first">
+          <label class="lp-gi-label" for="lp-gname">Tên nhóm</label>
+          <input type="text" class="lp-gi-input" id="lp-gname"
+            placeholder="VD: Nhóm dự án ABC"
+            oninput="window.dcOnGroupNameInput(this,event)" autocomplete="off">
+        </div>
+
+        <div class="lp-gi-members-bar">
+          <div style="width:28px;height:28px;border-radius:50%;background:var(--c-tint);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-main)" stroke-width="2.2" stroke-linecap="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </div>
+          <span style="font-size:12.5px;color:var(--n-500);font-weight:500;">0 thành viên được chọn</span>
+        </div>
+
+        <button type="button" id="lp-create-btn" class="lp-create-btn" disabled
+          onclick="window.dcOnSubmitCreate(this,event)">Tạo nhóm</button>
+
+      </div><!-- /lp-s4 -->
+
+    </div><!-- /lp-track -->
+  </div><!-- /dc-left -->
+
+  <!-- ════════════════════════════════
+       CENTER PANEL — flex:1
+       ════════════════════════════════ -->
+  <div class="dc-center" id="dc-center">
+
+    <!-- Drag-and-drop overlay -->
+    <div id="dc-drop-overlay">
+      <div style="width:56px;height:56px;border-radius:50%;background:var(--c-tint);border:2px solid var(--c-border);display:flex;align-items:center;justify-content:center;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-main)" stroke-width="2" stroke-linecap="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+      </div>
+      <div style="font-size:14px;font-weight:600;color:var(--c-main);">Thả file vào đây</div>
+      <div style="font-size:12.5px;color:var(--n-500);">Hỗ trợ ảnh, PDF, Word, Excel</div>
+    </div>
+
+    <!-- Chat header -->
+    <div class="dc-chat-header">
+      <div class="dc-header-left">
+        <div class="dc-header-avatar" id="dc-header-avatar"></div>
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="dc-header-name">Chọn hội thoại</span>
+            <span class="dc-type-badge" id="dc-type-badge" style="display:none;"></span>
+          </div>
+          <div class="dc-header-sub" id="dc-header-sub"></div>
+        </div>
+      </div>
+      <div class="dc-header-right">
+        <button type="button" class="dc-icon-btn" id="dc-btn-search-toggle"
+          style="width:32px;height:32px;display:none;" title="Tìm trong hội thoại"
+          onclick="window.dcOnSearchToggle(this,event)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+        </button>
+        <button type="button" class="dc-icon-btn" id="dc-btn-toggle-rp"
+          style="width:32px;height:32px;display:none;" title="Thông tin"
+          onclick="window.dcOnToggleInfo(this,event)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M20 21a8 8 0 1 0-16 0"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Thread search bar (hidden until toggle) -->
+    <div id="dc-msg-search-bar" style="display:none;padding:8px 16px;border-bottom:1px solid var(--n-100);background:var(--n-50);flex-shrink:0;">
+      <div class="dc-search-wrap" style="padding:0;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input type="text" id="dc-msg-search-input" placeholder="Tìm trong hội thoại..."
+          oninput="window.dcOnMsgSearch(this,event)" autocomplete="off">
+      </div>
+    </div>
+
+    <!-- Pinned message banner (hidden, FGVD shows if conv has pin) -->
+    <div id="dc-pin-banner">
+      <div class="dc-pin-accent"></div>
+      <div style="flex:1;min-width:0;">
+        <div class="dc-pin-label">Tin ghim</div>
+        <div class="dc-pin-text" id="dc-pin-text"></div>
+      </div>
+      <button type="button" class="dc-pin-close"
+        onclick="document.getElementById('dc-pin-banner').classList.remove('visible')">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Messages area -->
+    <div class="dc-messages-wrap">
+
+      <!-- Jump to latest button -->
+      <button type="button" class="dc-jump-btn" id="dc-jump-btn"
+        onclick="var m=document.getElementById('dc-messages');if(m)m.scrollTop=m.scrollHeight;this.classList.remove('visible');document.getElementById('dc-jump-badge').classList.remove('show');">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+        <div class="dc-jump-badge" id="dc-jump-badge"></div>
+      </button>
+
+      <!-- Thread — populated by dcMsgThreadHtml callback -->
+      <div id="dc-messages" class="thin-scroll">
+        <div style="text-align:center;color:var(--n-400);margin-top:60px;font-size:13px;">
+          ← Chọn hội thoại
+        </div>
+      </div>
+
+    </div><!-- /dc-messages-wrap -->
+
+    <!-- Composer -->
+    <div class="dc-composer-wrap" id="dc-composer-wrap" style="display:none;">
+      <div class="dc-input-box">
+
+        <!-- Reply preview (hidden until reply started) -->
+        <div id="dc-reply-preview">
+          <div class="dc-rp-accent"></div>
+          <div class="dc-rp-info">
+            <div class="dc-rp-sender"></div>
+            <div class="dc-rp-text"></div>
+          </div>
+          <button type="button" class="dc-rp-close"
+            onclick="window.dcOnReplyCancel(this,event)">
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- File preview bar (hidden until file attached) -->
+        <div id="dc-file-preview-bar"></div>
+
+        <!-- Formatting toolbar -->
+        <div class="dc-toolbar">
+          <button type="button" class="dc-tb-btn" title="In đậm (Ctrl+B)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/>
+            </svg>
+          </button>
+          <button type="button" class="dc-tb-btn" title="In nghiêng (Ctrl+I)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/>
+            </svg>
+          </button>
+          <button type="button" class="dc-tb-btn" title="Code">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+            </svg>
+          </button>
+          <div class="dc-tb-sep"></div>
+          <button type="button" class="dc-tb-btn" title="Link">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+          </button>
+          <button type="button" class="dc-tb-btn" title="Danh sách">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+              <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Message input (contenteditable — NOT <textarea> or <input>) -->
+        <div id="dc-chat-input"
+          contenteditable="true"
+          data-placeholder="Nhắn tin..."
+          onkeydown="window.dcOnMsgKeydown(this,event)"
+          oninput="window.dcOnMsgAutosize(this,event)"></div>
+
+        <!-- Bottom action row -->
+        <div class="dc-input-bottom">
+          <button type="button" class="dc-icon-btn" title="Đính kèm file">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </button>
+          <button type="button" class="dc-icon-btn" title="Chọn ảnh">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+          </button>
+          <div class="dc-emoji-wrap">
+            <button type="button" class="dc-icon-btn" title="Emoji"
+              onclick="var p=this.closest('.dc-emoji-wrap').querySelector('#dc-emoji-picker');p.classList.toggle('open');">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M8 13s1.5 2 4 2 4-2 4-2"/>
+                <line x1="9" y1="9" x2="9.01" y2="9"/>
+                <line x1="15" y1="9" x2="15.01" y2="9"/>
+              </svg>
+            </button>
+            <div id="dc-emoji-picker">
+              <input class="dc-emoji-search" type="text" placeholder="Tìm emoji...">
+              <div class="dc-emoji-cat-label">Hay dùng</div>
+              <div class="dc-emoji-grid">
+                <button type="button" class="dc-emoji-btn">😀</button>
+                <button type="button" class="dc-emoji-btn">😊</button>
+                <button type="button" class="dc-emoji-btn">👍</button>
+                <button type="button" class="dc-emoji-btn">🎉</button>
+                <button type="button" class="dc-emoji-btn">❤️</button>
+                <button type="button" class="dc-emoji-btn">🔥</button>
+                <button type="button" class="dc-emoji-btn">✅</button>
+                <button type="button" class="dc-emoji-btn">👏</button>
+                <button type="button" class="dc-emoji-btn">😂</button>
+                <button type="button" class="dc-emoji-btn">🙏</button>
+                <button type="button" class="dc-emoji-btn">💯</button>
+                <button type="button" class="dc-emoji-btn">⚡</button>
+                <button type="button" class="dc-emoji-btn">🤝</button>
+                <button type="button" class="dc-emoji-btn">📋</button>
+                <button type="button" class="dc-emoji-btn">📊</button>
+                <button type="button" class="dc-emoji-btn">💼</button>
+              </div>
+              <div class="dc-emoji-cat-label">Ký hiệu</div>
+              <div class="dc-emoji-grid">
+                <button type="button" class="dc-emoji-btn">⚠️</button>
+                <button type="button" class="dc-emoji-btn">ℹ️</button>
+                <button type="button" class="dc-emoji-btn">📌</button>
+                <button type="button" class="dc-emoji-btn">🔔</button>
+                <button type="button" class="dc-emoji-btn">📎</button>
+                <button type="button" class="dc-emoji-btn">🔗</button>
+                <button type="button" class="dc-emoji-btn">✏️</button>
+                <button type="button" class="dc-emoji-btn">🗒️</button>
+              </div>
+            </div>
+          </div>
+          <button type="button" class="dc-icon-btn" title="Mention @">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="12" cy="12" r="4"/>
+              <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"/>
+            </svg>
+          </button>
+          <button type="button" id="dc-send-btn" title="Gửi (Enter)"
+            onclick="window.dcOnSend(this,event)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
+
+      </div><!-- /dc-input-box -->
+      <div class="dc-enter-hint">
+        <kbd>Enter</kbd><span>gửi</span>
+        <span style="margin:0 3px;">·</span>
+        <kbd>Shift+Enter</kbd><span>xuống dòng</span>
+      </div>
+    </div><!-- /dc-composer-wrap -->
+
+  </div><!-- /dc-center -->
+
+  <!-- ════════════════════════════════
+       RIGHT PANEL — 272px
+       Populated by dcInfoHtml callback
+       ════════════════════════════════ -->
+  <div class="dc-right thin-scroll" id="dc-right-panel">
+    <div class="dc-loading">Đang tải...</div>
+  </div>
+
+</div><!-- /dc-layout -->
+
+<!-- ── Lightbox ──────────────────────────────────────── -->
+<div id="dc-lightbox">
+  <img id="dc-lb-img" src="" alt="">
+  <button type="button" id="dc-lb-close"
+    onclick="document.getElementById('dc-lightbox').classList.remove('open')">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round">
+      <line x1="18" y1="6" x2="6" y2="18"/>
+      <line x1="6" y1="6" x2="18" y2="18"/>
+    </svg>
+  </button>
+</div>
+
+<!-- ── Forward modal ──────────────────────────────────── -->
+<div id="dc-forward-modal">
+  <div class="dc-fwd-box">
+    <div class="dc-fwd-header">
+      <span class="dc-fwd-title">Chuyển tiếp tin nhắn</span>
+      <button type="button" class="dc-icon-btn"
+        onclick="document.getElementById('dc-forward-modal').classList.remove('open')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="dc-fwd-quote" id="dc-fwd-quote"></div>
+    <div class="dc-fwd-search">
+      <div style="position:relative;">
+        <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;"
+          width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input type="text" id="dc-fwd-search-input" style="width:100%;padding:8px 12px 8px 32px;border:1px solid var(--n-200);border-radius:9px;font-size:13px;outline:none;font-family:'Outfit',system-ui,sans-serif;" placeholder="Tìm hội thoại...">
+      </div>
+    </div>
+    <!-- Populated by FGVD from conv list -->
+    <div class="dc-fwd-list" id="dc-fwd-list"></div>
+    <div class="dc-fwd-footer">
+      <button type="button" class="dc-fwd-btn-cancel"
+        onclick="document.getElementById('dc-forward-modal').classList.remove('open')">Hủy</button>
+      <button type="button" class="dc-fwd-btn-send" id="dc-fwd-send-btn">Gửi</button>
+    </div>
+  </div>
+</div>

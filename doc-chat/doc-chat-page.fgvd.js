@@ -2,11 +2,8 @@
  * Page 10022710201 — Paste TOÀN BỘ file này vào:
  *   Page → JavaScript → "Function and Global Variable Declaration".
  *
- * Mục tiêu: né giới hạn ký tự — toàn bộ hàm + state ở đây, mỗi tương tác do 1 Dynamic Action
- * kích hoạt (gọi window.dcOn*). Xem docs/doc-chat-da-setup.md.
- *
- * FGVD chạy TRƯỚC "Execute when Page Loads" nên CHAT_AUS_ID set ngay đây (IIFE đọc AUS_ID lúc init).
- * Items theo P${pageId}_ITEM_NAME → dùng $v('P'+pageId+'_CONV_ID').
+ * Nexus redesign — class names MỚI, slider lpGoTo(), contenteditable input.
+ * Xem docs/da-setup.md để biết 19 DA + HTML IDs cần có trên APEX page.
  */
 window.CHAT_AUS_ID = &G_AUS_ID.;
 var pageId = $v('pFlowStepId');
@@ -19,22 +16,30 @@ var pageId = $v('pFlowStepId');
   var activeConvId    = null;
   var activeFilter    = 'ALL';
   var showInfo        = true;
-  var typingUsers     = {};   // aus_id → name
-  var typingTimers    = {};   // aus_id → timer handle
-  var selectedMembers = {};   // aus_id → { name, hue } — create dialog state
+  var typingUsers     = {};
+  var typingTimers    = {};
+  var selectedMembers = {};
   var isSending       = false;
-  var lastSentAt      = 0;    // ms — suppress duplicate reload from apex:chatEvent
-  var typingDebounce;         // typing timer
-  var convSearchTimer;        // sidebar search debounce
-  var msgSearchTimer;         // message search debounce
+  var lastSentAt      = 0;
+  var typingDebounce;
+  var convSearchTimer;
+  var msgSearchTimer;
 
-  // Modal load trong iframe — global.js (TRANG CHA) fire apex:chatEvent trên parent document
-  // bằng jQuery CỦA TRANG CHA. jQuery custom event KHÔNG vượt 2 instance jQuery → phải bind
-  // bằng đúng jQuery của trang cha. Xem REVIEW-realtime-flow.
+  // Cross-frame event: global.js (trang cha) trigger apex:chatEvent trên parent document
+  // bằng jQuery của trang cha. jQuery custom event không vượt 2 instance → phải bind đúng.
   var inIframe  = (window.parent && window.parent !== window);
   var eventWin  = inIframe ? window.parent : window;
   var $evt      = (eventWin.apex && eventWin.apex.jQuery) ? eventWin.apex.jQuery : $;
   var $eventDoc = $evt(eventWin.document);
+
+  // ── Slider ───────────────────────────────────────────────────────────────────
+  // S0=#lp-s1 (conv list), S1=#lp-s2 (DM picker), S2=#lp-s3 (group members), S3=#lp-s4 (group info)
+
+  var LP_W = 268;
+  function lpGoTo(n) {
+    var track = document.getElementById('lp-track');
+    if (track) track.style.transform = 'translateX(-' + (n * LP_W) + 'px)';
+  }
 
   // ── APEX helpers ─────────────────────────────────────────────────────────────
 
@@ -64,7 +69,7 @@ var pageId = $v('pFlowStepId');
     });
   }
 
-  // ── Data loaders ──────────────────────────────────────────────────────────────
+  // ── Data loaders ─────────────────────────────────────────────────────────────
 
   function loadConvList(onDone) {
     dcHtml('dcConvListHtml', {
@@ -72,40 +77,40 @@ var pageId = $v('pFlowStepId');
       x02: $v('P' + pageId + '_DOC_NO'),
       x03: activeFilter,
       x04: $v('P' + pageId + '_SEARCH_QUERY') || ''
-    }, 'dc-conv-list', onDone);
+    }, 'lp-conv-list', onDone);
   }
 
   function loadThread() {
     if (!activeConvId) {
       var el = document.getElementById('dc-messages');
       if (el) el.innerHTML =
-        '<div style="text-align:center;color:var(--text-3);margin-top:60px;font-size:13px">← Chọn hội thoại</div>';
+        '<div style="text-align:center;color:var(--n-400);margin-top:60px;font-size:13px">← Chọn hội thoại</div>';
       return;
     }
     var searchInput = document.getElementById('dc-msg-search-input');
     dcHtml('dcMsgThreadHtml', {
       x01: String(activeConvId),
       x02: searchInput ? searchInput.value : ''
-    }, 'dc-messages', scrollToBottom);
+    }, 'dc-messages', function() { setTimeout(scrollToBottom, 300); });
   }
 
   function loadInfo() {
     if (!showInfo) return;
-    dcHtml('dcInfoHtml', { x01: activeConvId ? String(activeConvId) : '' }, 'dc-info', injectDocFields);
+    dcHtml('dcInfoHtml', { x01: activeConvId ? String(activeConvId) : '' }, 'dc-right-panel', injectDocFields);
   }
 
-  function loadContacts(onDone) {
-    dcHtml('dcContactsHtml', {}, 'dc-create-content', onDone);
+  function loadContacts(targetId, format, onDone) {
+    dcHtml('dcContactsHtml', { x01: format || 'GROUP' }, targetId, onDone);
   }
 
-  // ── Scroll to bottom ──────────────────────────────────────────────────────────
+  // ── Scroll ───────────────────────────────────────────────────────────────────
 
   function scrollToBottom() {
     var el = document.getElementById('dc-messages');
     if (el) el.scrollTop = el.scrollHeight;
   }
 
-  // ── Doc fields from sessionStorage ────────────────────────────────────────────
+  // ── Doc fields from sessionStorage → patch right panel after dcInfoHtml load ─
 
   function injectDocFields() {
     var ctx = {};
@@ -127,7 +132,7 @@ var pageId = $v('pFlowStepId');
       if (!fields.length) { elFields.innerHTML = ''; return; }
       var html = '';
       fields.forEach(function(f) {
-        html += '<div class="doc-summary-row">'
+        html += '<div class="dc-voucher-row">'
               + '<span class="k">' + escHtml(f[0]) + '</span>'
               + '<span class="v">' + escHtml(f[1]) + '</span>'
               + '</div>';
@@ -140,7 +145,7 @@ var pageId = $v('pFlowStepId');
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  // ── Select conversation ────────────────────────────────────────────────────────
+  // ── Select conversation ───────────────────────────────────────────────────────
 
   function selectConv(convId) {
     convId = Number(convId);
@@ -149,56 +154,61 @@ var pageId = $v('pFlowStepId');
     $s('P' + pageId + '_CONV_ID', String(convId));
     $s('P' + pageId + '_REPLY_TO_MSG_ID', '');
 
-    $('.convo-item').removeClass('active');
-    $('.convo-item[data-conv-id="' + convId + '"]').addClass('active');
+    // Active state
+    $('.dc-conv-item').removeClass('dc-conv-active');
+    var $item = $('.dc-conv-item[data-conv-id="' + convId + '"]');
+    $item.addClass('dc-conv-active');
 
-    document.getElementById('dc-compose-area').style.display = '';
-    document.getElementById('dc-btn-search-toggle').style.display = '';
-    document.getElementById('dc-btn-info').style.display = '';
+    // Update chat header name
+    var name = $item.find('.dc-conv-name').text();
+    var headerName = document.querySelector('.dc-header-name');
+    if (headerName) headerName.textContent = name;
 
-    document.getElementById('dc-reply-banner').style.display = 'none';
-    $('#dc-composer').removeClass('with-reply');
-
-    var $item = $('.convo-item[data-conv-id="' + convId + '"]');
-    var name  = $item.find('.convo-name').text();
-    document.getElementById('dc-chat-head-title').textContent = name;
-
-    var headEl = document.getElementById('dc-chat-head');
-    if (headEl) {
-      var $existingAv = $(headEl).find('.chat-head-avatar');
-      if ($existingAv.length) $existingAv.remove();
-      var $srcAv = $item.find('.convo-avatar').first();
-      if ($srcAv.length) {
-        var $av = $srcAv.clone().removeClass('convo-avatar');
-        $av.addClass('chat-head-avatar').css({ width: 36, height: 36, fontSize: 13 });
-        $(headEl).prepend($av);
-      }
+    // Clone avatar into header
+    var $srcAv = $item.find('.dc-av').first();
+    var headerAv = document.querySelector('.dc-header-avatar');
+    if (headerAv && $srcAv.length) {
+      headerAv.className = 'dc-header-avatar ' + ($srcAv.attr('class') || '').replace('dc-av', '').trim();
+      headerAv.setAttribute('style', $srcAv.attr('style') || '');
+      headerAv.innerHTML = $srcAv.html();
     }
+
+    // Show composer + header action buttons (hidden until first conv)
+    var composerWrap = document.getElementById('dc-composer-wrap');
+    if (composerWrap) composerWrap.style.display = '';
+    var searchBtn = document.getElementById('dc-btn-search-toggle');
+    if (searchBtn) searchBtn.style.display = '';
+    var rpBtn = document.getElementById('dc-btn-toggle-rp');
+    if (rpBtn) rpBtn.style.display = '';
+
+    // Clear reply preview
+    var rp = document.getElementById('dc-reply-preview');
+    if (rp) rp.classList.remove('rp-active');
 
     loadThread();
     loadInfo();
     dcJson('docChatRead', { x01: String(convId) });
 
-    $('.convo-item[data-conv-id="' + convId + '"]').removeClass('unread').find('.convo-badge').remove();
+    $item.removeClass('unread').find('.dc-conv-badge').remove();
   }
 
-  // ── Send message ───────────────────────────────────────────────────────────────
+  // ── Send message ─────────────────────────────────────────────────────────────
 
   function sendMessage() {
     if (isSending) return;
-    var input   = document.getElementById('dc-msg-input');
-    var body    = (input.value || '').trim();
+    var input  = document.getElementById('dc-chat-input');
+    var body   = input ? (input.innerText || input.textContent || '').trim() : '';
     var replyId = $v('P' + pageId + '_REPLY_TO_MSG_ID') || '';
-    var partner = $('.convo-item[data-conv-id="' + activeConvId + '"]').data('partner-aus-id') || '';
+    var partner = $('.dc-conv-item[data-conv-id="' + activeConvId + '"]').data('partner-aus-id') || '';
 
     if (!body || !activeConvId) return;
 
     isSending  = true;
     lastSentAt = Date.now();
-    input.value = '';
+    if (input) input.textContent = '';
     $s('P' + pageId + '_REPLY_TO_MSG_ID', '');
-    document.getElementById('dc-reply-banner').style.display = 'none';
-    $('#dc-composer').removeClass('with-reply');
+    var rp = document.getElementById('dc-reply-preview');
+    if (rp) rp.classList.remove('rp-active');
 
     dcJson('docChatSend', {
       x01: String(activeConvId),
@@ -216,13 +226,11 @@ var pageId = $v('pFlowStepId');
       loadConvList();
     }, function(xhr) {
       isSending = false;
-      var msg = xhr.responseText || 'Lỗi kết nối';
-      apex.message.showErrors([{ type: 'error', message: 'Gửi thất bại: ' + msg }]);
-      console.error('[DocChat] docChatSend xhr error:', msg);
+      apex.message.showErrors([{ type: 'error', message: 'Gửi thất bại: ' + (xhr.responseText || 'Lỗi kết nối') }]);
     });
   }
 
-  // ── Typing ─────────────────────────────────────────────────────────────────────
+  // ── Typing ───────────────────────────────────────────────────────────────────
 
   function onMsgInput() {
     if (!activeConvId) return;
@@ -246,40 +254,40 @@ var pageId = $v('pFlowStepId');
   }
 
   function renderTyping() {
-    var names = Object.values(typingUsers);
-    var el = document.getElementById('dc-typing');
-    var elText = document.getElementById('dc-typing-text');
+    var names  = Object.values(typingUsers);
+    var el     = document.getElementById('dc-typing-row');
+    var elText = document.querySelector('#dc-typing-row .dc-typing-label');
     if (!el) return;
     if (!names.length) { el.style.display = 'none'; return; }
-    if (elText) elText.textContent = names.slice(0, 2).join(', ') + ' đang nhập...';
+    if (elText) elText.textContent = names.slice(0, 2).join(', ') + ' đang gõ';
     el.style.display = 'flex';
   }
 
-  // ── Real-time events from global.js ───────────────────────────────────────────
-  // GIỮ BINDING Ở FGVD (không làm DA): custom event mang payload qua jQuery trigger;
-  // và cleanup khi iframe unload. DA không lấy được payload của trigger, không gắn unload.
+  // ── Seen indicator ───────────────────────────────────────────────────────────
 
   function showSeen() {
     var box = document.getElementById('dc-messages');
     if (!box) return;
     var old = box.querySelector('.msg-seen');
     if (old) old.remove();
-    var mine = box.querySelectorAll('.msg-row.mine');
+    var mine = box.querySelectorAll('.message-group.msg-me-wrap');
     if (!mine.length) return;
-    var col = mine[mine.length - 1].querySelector('.msg-col');
-    if (!col) return;
+    var lastInner = mine[mine.length - 1].querySelector('.msg-me-inner');
+    if (!lastInner) return;
     var tag = document.createElement('div');
     tag.className = 'msg-seen';
     tag.textContent = '✓ Đã xem';
-    col.appendChild(tag);
+    lastInner.appendChild(tag);
   }
+
+  // ── Real-time events ─────────────────────────────────────────────────────────
+  // Bind ở FGVD (không phải DA): cần payload từ trigger + cleanup khi iframe unload.
 
   function onChatEvent(_, ev) {
     if (ev.type === 'message') {
       loadConvList();
       if (String(ev.conv_id) === String(activeConvId)) {
-        var justSentHere = (Date.now() - lastSentAt) < 3000;
-        if (!justSentHere) loadThread();
+        if ((Date.now() - lastSentAt) >= 3000) loadThread();
         dcJson('docChatRead', { x01: String(activeConvId) });
       }
     } else if (ev.type === 'typing') {
@@ -296,135 +304,133 @@ var pageId = $v('pFlowStepId');
   }
 
   $eventDoc.on('apex:chatEvent', onChatEvent);
-
-  // Khi iframe unload (modal đóng), gỡ handler khỏi parent document
   $(window).on('unload', function() {
     $eventDoc.off('apex:chatEvent', onChatEvent);
   });
 
-  // ── Create conversation dialog: helpers ───────────────────────────────────────
+  // ── Create conversation: chips + member toggle ────────────────────────────────
 
   function renderChips() {
-    var $chips = $('#dc-selected-chips');
-    var count  = Object.keys(selectedMembers).length;
-    var $count = $('#dc-selected-count');
-    if ($count.length) $count.text(count);
-    if (!$chips.length) return;
+    var $chips   = $('#lp-s3-chips');
+    var count    = Object.keys(selectedMembers).length;
+    var countEl  = document.querySelector('.lp-gm-count');
+    var s4Count  = document.querySelector('.lp-gi-members-bar span');
+    var nextBtn  = document.querySelector('.lp-gm-next');
 
-    if (!count) {
-      $chips.html('<span style="color:var(--text-4);font-size:13px;padding:4px">Chưa chọn thành viên nào</span>');
-      return;
-    }
+    if (countEl) countEl.textContent = 'Đã chọn ' + count;
+    if (s4Count) s4Count.textContent = count + ' thành viên được chọn';
+    if (nextBtn) nextBtn.classList.toggle('lp-gm-ok', count > 0);
+
+    if (!$chips.length) return;
+    if (!count) { $chips.html(''); return; }
+
     var html = '';
     Object.keys(selectedMembers).forEach(function(ausId) {
       var m     = selectedMembers[ausId];
       var initl = m.name.trim().split(/\s+/).slice(-1)[0][0].toUpperCase();
-      html += '<span class="member-chip">'
-            + '<span class="member-chip-avatar" style="background:hsl(' + m.hue + ',55%,52%)">'
-            + (m.img ? '<img class="av-img" onerror="this.remove()" src="' + escHtml(m.img) + '">' : '') + initl + '</span>'
-            + escHtml(m.name.split(/\s+/).slice(-1)[0])
-            + '<span class="x" data-chip-id="' + ausId + '">×</span>'
-            + '</span>';
+      html += '<div class="lp-gc">'
+            + '<div class="lp-gc-av" style="background:hsl(' + m.hue + ',55%,52%)">' + initl + '</div>'
+            + '<span>' + escHtml(m.name.trim().split(/\s+/).slice(-1)[0]) + '</span>'
+            + '<button type="button" class="lp-gc-x" data-chip-id="' + ausId + '">'
+            + '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">'
+            + '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
+            + '</button></div>';
     });
     $chips.html(html);
   }
 
   function toggleMember(item) {
-    var $item    = $(item);
-    var ausId    = String($item.data('aus-id'));
-    var name     = String($item.data('name') || '');
-    var hue      = String($item.data('hue')  || '0');
-    var img      = String($item.data('img')  || '');
-    var convType = $('input[name="dc-conv-type"]:checked').val() || 'DM';
+    var $item  = $(item).closest('.gm-row');
+    var ausId  = String($item.data('aus-id'));
+    var name   = String($item.data('name') || '');
+    var hue    = String($item.data('hue')  || '0');
+    var img    = String($item.data('img')  || '');
 
-    if ($item.hasClass('selected')) {
-      $item.removeClass('selected');
+    if ($item.hasClass('gm-sel')) {
+      $item.removeClass('gm-sel');
       delete selectedMembers[ausId];
     } else {
-      if (convType === 'DM') {
-        $('#dc-member-suggest-list .member-suggest-item.selected').removeClass('selected');
-        selectedMembers = {};
-      }
-      $item.addClass('selected');
+      $item.addClass('gm-sel');
       selectedMembers[ausId] = { name: name, hue: hue, img: img };
     }
     renderChips();
   }
 
-  // Thân của handler "đổi loại hội thoại" — tách ra để openCompose gọi trực tiếp,
-  // KHÔNG còn phụ thuộc .trigger('change') (DA không đảm bảo nhận trigger giả lập).
-  function applyConvType(convType, radioEl) {
-    var isChannel = convType === 'CHANNEL';
-    $('.dc-type-tab').removeClass('active');
-    if (radioEl) {
-      $(radioEl).closest('.dc-type-tab').addClass('active');
-    } else {
-      $('input[name="dc-conv-type"][value="' + convType + '"]').closest('.dc-type-tab').addClass('active');
-    }
-    var wrap = document.getElementById('dc-create-name-wrap');
-    if (wrap) wrap.style.display = isChannel ? 'flex' : 'none';
-    if (!isChannel) {
-      Object.keys(selectedMembers).slice(1).forEach(function(id) {
-        delete selectedMembers[id];
-        $('#dc-member-suggest-list .member-suggest-item[data-aus-id="' + id + '"]').removeClass('selected');
-      });
-      renderChips();
-    }
-  }
-
-  // ── Inline compose: mở / đóng panel trong cột trái ──────────────────────────
+  // ── Compose: open / close via slider ─────────────────────────────────────────
 
   function openCompose(convType) {
     selectedMembers = {};
-    document.getElementById('dc-list-screen').style.display    = 'none';
-    document.getElementById('dc-compose-screen').style.display = 'flex';
-    document.getElementById('dc-compose-title').textContent =
-      convType === 'CHANNEL' ? 'Tạo nhóm mới' : 'Nhắn tin mới';
-
-    loadContacts(function() {
-      $('input[name=dc-conv-type][value="' + convType + '"]').prop('checked', true);
-      applyConvType(convType);
-      injectCreateContext();
-    });
+    renderChips();
+    if (convType === 'DM') {
+      lpGoTo(1);
+      loadContacts('lp-s2-list', 'DM');
+    } else {
+      lpGoTo(2);
+      loadContacts('lp-s3-list', 'GROUP');
+    }
   }
 
   function closeCompose() {
-    document.getElementById('dc-compose-screen').style.display = 'none';
-    document.getElementById('dc-list-screen').style.display    = 'flex';
+    lpGoTo(0);
     selectedMembers = {};
+    renderChips();
   }
 
   function injectCreateContext() {
     var docType = $v('P' + pageId + '_DOC_TYPE');
     var docNo   = $v('P' + pageId + '_DOC_NO');
-    var ref = document.getElementById('dc-create-doc-ref');
-    if (ref) ref.textContent = (docType && docNo) ? (docType + ' — ' + docNo) : '—';
-    var nameEl = document.getElementById('dc-create-name');
+    var nameEl  = document.getElementById('lp-gname');
     if (nameEl && !nameEl.value && docType && docNo) {
       nameEl.value = docType + ' - ' + docNo;
+      updateGroupAvatar();
     }
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  //  HANDLERS gọi từ Dynamic Action — nhận (el, ev) từ this.triggeringElement
-  //  và this.browserEvent. Xem docs/doc-chat-da-setup.md.
-  // ════════════════════════════════════════════════════════════════════════
-
-  // DA1 — Click .convo-item[data-conv-id]  (chọn hội thoại)
-  function dcOnConvClick(el, ev) { selectConv($(el).data('conv-id')); }
-
-  // DA2 — Click .lp-filter-chip[data-filter], .convo-tab[data-filter]  (lọc theo loại)
-  function dcOnFilter(el, ev) {
-    var $t = $(el);
-    activeFilter = $t.data('filter');
-    if ($t.hasClass('convo-tab')) {
-      $t.closest('.convo-tabs').find('.convo-tab').removeClass('active');
-      $t.addClass('active');
+  function updateGroupAvatar() {
+    var nameEl = document.getElementById('lp-gname');
+    var name   = nameEl ? nameEl.value.trim() : '';
+    var av     = document.getElementById('lp-gi-av');
+    var ini    = document.getElementById('lp-av-initials');
+    var btn    = document.getElementById('lp-create-btn');
+    if (!av) return;
+    if (name) {
+      if (ini) { ini.textContent = name.substring(0, 2).toUpperCase(); ini.style.display = 'flex'; }
+      av.style.background = 'var(--c-main)';
+      av.classList.remove('lp-av-empty');
+      av.classList.add('lp-av-filled');
+      var svg = av.querySelector('svg');
+      if (svg) svg.style.display = 'none';
+      if (btn) btn.disabled = false;
+    } else {
+      if (ini) ini.style.display = 'none';
+      av.style.background = '';
+      av.classList.add('lp-av-empty');
+      av.classList.remove('lp-av-filled');
+      var svg2 = av.querySelector('svg');
+      if (svg2) svg2.style.display = '';
+      if (btn) btn.disabled = true;
     }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  //  HANDLERS — gọi từ Dynamic Action (window.dcOn*)
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // DA1 — Click .dc-conv-item[data-conv-id]
+  function dcOnConvClick(el, ev) {
+    var $item = $(el).closest('.dc-conv-item');
+    selectConv($item.data('conv-id'));
+  }
+
+  // DA2 — Click .dc-filter-tab[data-filter]
+  function dcOnFilter(el, ev) {
+    activeFilter = $(el).data('filter');
+    $('.dc-filter-tab').removeClass('active');
+    $(el).addClass('active');
     loadConvList();
   }
 
-  // DA3 — Custom input #dc-conv-search  (tìm kiếm hội thoại, debounce)
+  // DA3 — Custom input #dc-conv-search
   function dcOnConvSearch(el, ev) {
     var q = el.value;
     clearTimeout(convSearchTimer);
@@ -434,92 +440,111 @@ var pageId = $v('pFlowStepId');
     }, 350);
   }
 
-  // DA4 — Click #dc-btn-search-toggle  (bật/tắt thanh tìm trong hội thoại)
+  // DA4 — Click search-toggle button (trong chat header)
   function dcOnSearchToggle(el, ev) {
     var bar = document.getElementById('dc-msg-search-bar');
-    if (bar.style.display !== 'none') {
+    if (!bar) return;
+    var isShown = bar.style.display !== 'none' && bar.style.display !== '';
+    if (isShown) {
       bar.style.display = 'none';
-      document.getElementById('dc-msg-search-input').value = '';
+      var inp = document.getElementById('dc-msg-search-input');
+      if (inp) inp.value = '';
       loadThread();
     } else {
-      bar.style.display = 'block';
-      document.getElementById('dc-msg-search-input').focus();
+      bar.style.display = '';
+      var inp2 = document.getElementById('dc-msg-search-input');
+      if (inp2) inp2.focus();
     }
-    $(el).toggleClass('active');
+    $(el).toggleClass('active', !isShown);
   }
 
-  // DA5 — Custom input #dc-msg-search-input  (tìm trong hội thoại, debounce)
+  // DA5 — Custom input #dc-msg-search-input
   function dcOnMsgSearch(el, ev) {
     clearTimeout(msgSearchTimer);
     msgSearchTimer = setTimeout(loadThread, 350);
   }
 
-  // DA6 — Click #dc-btn-info  (bật/tắt panel thông tin)
+  // DA6 — Click info/member button trong chat header
   function dcOnToggleInfo(el, ev) {
     showInfo = !showInfo;
-    $('#dc-body').toggleClass('with-info', showInfo);
-    var pane = document.getElementById('dc-info-pane');
-    if (pane) pane.style.display = showInfo ? '' : 'none';
+    var rp = document.getElementById('dc-right-panel');
+    if (rp) rp.classList.toggle('collapsed', !showInfo);
     $(el).toggleClass('active', showInfo);
     if (showInfo) loadInfo();
   }
 
-  // DA7 — Click .msg-hover-action[data-reply-id]  (bắt đầu trả lời)
+  // DA7 — Click .msg-action-btn[data-action="reply"]
   function dcOnReplyStart(el, ev) {
     if (ev) ev.stopPropagation();
-    var $a = $(el);
-    $s('P' + pageId + '_REPLY_TO_MSG_ID', String($a.data('reply-id')));
-    document.getElementById('dc-reply-preview').textContent = ($a.data('reply-body') || '').substring(0, 80);
-    document.getElementById('dc-reply-banner').style.display = 'flex';
-    $('#dc-composer').addClass('with-reply');
-    document.getElementById('dc-msg-input').focus();
+    var $group  = $(el).closest('.message-group');
+    var replyId = $group.data('msg-id') || '';
+    var isMe    = $group.hasClass('msg-me-wrap');
+    var sender  = isMe ? 'Tôi' : $group.find('.msg-sender').text().trim();
+    var body    = $group.find('.msg-text, .msg-me-bubble').first().text().trim();
+
+    $s('P' + pageId + '_REPLY_TO_MSG_ID', String(replyId));
+    var rpSender = document.querySelector('#dc-reply-preview .dc-rp-sender');
+    var rpText   = document.querySelector('#dc-reply-preview .dc-rp-text');
+    if (rpSender) rpSender.textContent = sender;
+    if (rpText)   rpText.textContent   = body.substring(0, 80);
+
+    var rp = document.getElementById('dc-reply-preview');
+    if (rp) rp.classList.add('rp-active');
+    var input = document.getElementById('dc-chat-input');
+    if (input) input.focus();
   }
 
-  // DA8 — Click #dc-reply-cancel  (hủy trả lời)
+  // DA8 — Click .dc-rp-close (nút × trong reply preview)
   function dcOnReplyCancel(el, ev) {
     $s('P' + pageId + '_REPLY_TO_MSG_ID', '');
-    document.getElementById('dc-reply-banner').style.display = 'none';
-    $('#dc-composer').removeClass('with-reply');
+    var rp = document.getElementById('dc-reply-preview');
+    if (rp) rp.classList.remove('rp-active');
   }
 
-  // DA9 — Click #dc-btn-send  (gửi tin)
+  // DA9 — Click #dc-send-btn
   function dcOnSend(el, ev) { sendMessage(); }
 
-  // DA10 — Key Down #dc-msg-input  (Ctrl+Enter gửi; phím khác → báo typing)
+  // DA10 — Keydown trên #dc-chat-input (contenteditable)
+  // Enter gửi tin; Shift+Enter xuống dòng (default behavior)
   function dcOnMsgKeydown(el, ev) {
-    if (ev && ev.ctrlKey && ev.key === 'Enter') { ev.preventDefault(); sendMessage(); }
-    else onMsgInput();
+    if (ev && ev.key === 'Enter' && !ev.shiftKey) {
+      ev.preventDefault();
+      sendMessage();
+    } else {
+      onMsgInput();
+    }
   }
 
-  // DA11 — Custom input #dc-msg-input  (auto-resize textarea)
-  function dcOnMsgAutosize(el, ev) {
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
-  }
+  // DA11 — No-op: contenteditable auto-resize qua CSS (min-height + max-height)
+  function dcOnMsgAutosize(el, ev) {}
 
-  // DA12 — Click #dc-member-suggest-list .member-suggest-item  (chọn/bỏ thành viên)
+  // DA12 — Click .gm-row (chọn/bỏ thành viên trong S3)
   function dcOnMemberToggle(el, ev) { toggleMember(el); }
 
-  // DA13 — Click .member-chip .x  (bỏ 1 chip thành viên)
+  // DA13 — Click .lp-gc-x (bỏ chip thành viên)
   function dcOnChipRemove(el, ev) {
     if (ev) ev.stopPropagation();
-    var ausId = String($(el).data('chip-id'));
+    var ausId = String($(el).closest('[data-chip-id]').data('chip-id') || $(el).data('chip-id'));
     delete selectedMembers[ausId];
-    $('#dc-member-suggest-list .member-suggest-item[data-aus-id="' + ausId + '"]').removeClass('selected');
+    $('#lp-s3-list .gm-row[data-aus-id="' + ausId + '"]').removeClass('gm-sel');
     renderChips();
   }
 
-  // DA14 — Custom input #dc-contact-search  (lọc danh bạ)
+  // DA14 — Custom input: search trong S2 (#lp-s2-search) hoặc S3 (#lp-s3-search)
   function dcOnContactSearch(el, ev) {
-    var q = el.value.toLowerCase().trim();
-    $('#dc-member-suggest-list .member-suggest-item').each(function() {
+    var q      = el.value.toLowerCase().trim();
+    var inS2   = $(el).closest('#lp-s2').length > 0;
+    var listId = inS2 ? 'lp-s2-list' : 'lp-s3-list';
+    var rowSel = inS2 ? '.lp-cr' : '.gm-row';
+
+    $('#' + listId + ' ' + rowSel).each(function() {
       var name = ($(this).data('name') || '').toLowerCase();
       var dept = ($(this).data('dept') || '').toLowerCase();
       $(this).toggle(!q || name.indexOf(q) !== -1 || dept.indexOf(q) !== -1);
     });
-    $('#dc-member-suggest-list [data-dept-header]').each(function() {
+    $('#' + listId + ' .lp-alpha').each(function() {
       var $h = $(this), any = false, $n = $h.next();
-      while ($n.length && !$n.is('[data-dept-header]')) {
+      while ($n.length && !$n.is('.lp-alpha')) {
         if ($n.is(':visible')) { any = true; break; }
         $n = $n.next();
       }
@@ -527,33 +552,80 @@ var pageId = $v('pFlowStepId');
     });
   }
 
-  // DA15 — Change input[name="dc-conv-type"]  (đổi loại hội thoại trong soạn)
-  function dcOnTypeTab(el, ev) { applyConvType(el.value, el); }
+  // DA15 — No-op: không còn radio conv-type trong Nexus flow
+  function dcOnTypeTab(el, ev) {}
 
-  // DA16 — Click #dc-btn-dm  (mở soạn tin cá nhân)
+  // DA16 — Click nút pencil/compose trong S1 header → S2 (DM picker)
   function dcOnOpenDM(el, ev) { openCompose('DM'); }
 
-  // DA17 — Click #dc-btn-group, #dc-btn-create  (mở soạn nhóm)
-  function dcOnOpenGroup(el, ev) { openCompose('CHANNEL'); }
+  // DA17 — Click "Tạo nhóm" trong S2 → S3 (member picker)
+  function dcOnGoToGroupMembers(el, ev) {
+    lpGoTo(2);
+    if (!document.querySelector('#lp-s3-list .gm-row')) {
+      loadContacts('lp-s3-list', 'GROUP');
+    }
+  }
 
-  // DA18 — Click #dc-compose-back, #dc-compose-close, #dc-create-cancel  (đóng soạn)
+  // DA18 — Click "Tiếp theo" trong S3 → S4 (group info)
+  function dcOnGroupNext(el, ev) {
+    if (!Object.keys(selectedMembers).length) {
+      apex.message.showErrors([{ type: 'error', message: 'Chọn ít nhất 1 thành viên' }]);
+      return;
+    }
+    lpGoTo(3);
+    injectCreateContext();
+  }
+
+  // DA: Back button trong S2 / S3 / S4 → về S0
   function dcOnCloseCompose(el, ev) { closeCompose(); }
 
-  // DA19 — Click #dc-create-submit  (tạo hội thoại)
+  // DA: Back trong S3 → S2
+  function dcOnGroupBack(el, ev) { lpGoTo(1); }
+
+  // DA: Back trong S4 → S3
+  function dcOnGroupInfoBack(el, ev) { lpGoTo(2); }
+
+  // DA: Click .lp-cr (chọn người trong S2 → tạo DM ngay)
+  function dcOnDMContactSelect(el, ev) {
+    var $item = $(el).closest('.lp-cr');
+    var ausId = $item.data('aus-id');
+    var name  = String($item.data('name') || '');
+    if (!ausId) return;
+
+    dcJson('docChatCreate', {
+      x01: 'DM',
+      x02: name,
+      x03: JSON.stringify([Number(ausId)]),
+      x04: $v('P' + pageId + '_DOC_TYPE'),
+      x05: $v('P' + pageId + '_DOC_NO')
+    }, function(data) {
+      if (data && data.error) {
+        apex.message.showErrors([{ type: 'error', message: 'Tạo thất bại: ' + data.error }]);
+        return;
+      }
+      closeCompose();
+      if (data && data.conv_id) {
+        loadConvList(function() { selectConv(data.conv_id); });
+      }
+    }, function(xhr) {
+      apex.message.showErrors([{ type: 'error', message: 'Tạo thất bại: ' + (xhr.responseText || 'Lỗi kết nối') }]);
+    });
+  }
+
+  // DA19 — Click #lp-create-btn trong S4 (tạo nhóm)
   function dcOnSubmitCreate(el, ev) {
     var $btn = $(el);
-    if ($btn.data('submitting')) return;
+    if ($btn.prop('disabled') || $btn.data('submitting')) return;
 
-    var convType = $('input[name="dc-conv-type"]:checked').val() || 'DM';
-    var nameEl   = document.getElementById('dc-create-name');
-    var name     = nameEl ? nameEl.value.trim() : '';
-    var members  = Object.keys(selectedMembers).map(Number);
+    var nameEl  = document.getElementById('lp-gname');
+    var name    = nameEl ? nameEl.value.trim() : '';
+    var members = Object.keys(selectedMembers).map(Number);
 
     if (!members.length) {
       apex.message.showErrors([{ type: 'error', message: 'Chọn ít nhất 1 thành viên' }]);
       return;
     }
-    if (convType === 'CHANNEL' && !name) {
+    if (!name) {
       var docType = $v('P' + pageId + '_DOC_TYPE');
       var docNo   = $v('P' + pageId + '_DOC_NO');
       name = (docType && docNo) ? docType + ' - ' + docNo : 'Nhóm mới';
@@ -563,7 +635,7 @@ var pageId = $v('pFlowStepId');
     $btn.data('submitting', true).prop('disabled', true);
 
     dcJson('docChatCreate', {
-      x01: convType,
+      x01: 'CHANNEL',
       x02: name,
       x03: JSON.stringify(members),
       x04: $v('P' + pageId + '_DOC_TYPE'),
@@ -572,7 +644,6 @@ var pageId = $v('pFlowStepId');
       $btn.removeData('submitting').prop('disabled', false);
       if (data && data.error) {
         apex.message.showErrors([{ type: 'error', message: 'Tạo thất bại: ' + data.error }]);
-        console.error('[DocChat] docChatCreate error:', data.error);
         return;
       }
       closeCompose();
@@ -581,12 +652,74 @@ var pageId = $v('pFlowStepId');
       }
     }, function(xhr) {
       $btn.removeData('submitting').prop('disabled', false);
-      console.error('[DocChat] docChatCreate xhr error:', xhr.responseText);
       apex.message.showErrors([{ type: 'error', message: 'Tạo thất bại: ' + (xhr.responseText || 'Lỗi kết nối') }]);
     });
   }
 
-  // ── Init (gọi 1 lần từ "Execute when Page Loads") ─────────────────────────────
+  // DA: Oninput #lp-gname → cập nhật group avatar preview
+  function dcOnGroupNameInput(el, ev) { updateGroupAvatar(); }
+
+  // ── Post-inject setup — wire listeners after HTML fragment injected ──────────
+
+  function setupAfterInject() {
+    // Emoji picker: close on click outside
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.dc-emoji-wrap')) {
+        var picker = document.getElementById('dc-emoji-picker');
+        if (picker) picker.classList.remove('open');
+      }
+    });
+
+    // Emoji button: insert into contenteditable
+    var emojiPicker = document.getElementById('dc-emoji-picker');
+    if (emojiPicker) {
+      emojiPicker.addEventListener('click', function(e) {
+        var btn = e.target.closest('.dc-emoji-btn');
+        if (!btn) return;
+        var input = document.getElementById('dc-chat-input');
+        if (input) { input.focus(); document.execCommand('insertText', false, btn.textContent); }
+        emojiPicker.classList.remove('open');
+      });
+    }
+
+    // Lightbox: close on backdrop click or Escape
+    var lb = document.getElementById('dc-lightbox');
+    if (lb) {
+      lb.addEventListener('click', function(e) { if (e.target === lb) lb.classList.remove('open'); });
+    }
+
+    // Forward modal: close on backdrop click
+    var fwd = document.getElementById('dc-forward-modal');
+    if (fwd) {
+      fwd.addEventListener('click', function(e) { if (e.target === fwd) fwd.classList.remove('open'); });
+    }
+
+    // Keyboard: Escape closes lightbox / forward modal
+    document.addEventListener('keydown', function(e) {
+      if (e.key !== 'Escape') return;
+      var lb2 = document.getElementById('dc-lightbox');
+      if (lb2) lb2.classList.remove('open');
+      var fwd2 = document.getElementById('dc-forward-modal');
+      if (fwd2) fwd2.classList.remove('open');
+    });
+
+    // Jump button: show when scrolled up > 300px from bottom
+    var msgEl = document.getElementById('dc-messages');
+    if (msgEl) {
+      msgEl.addEventListener('scroll', function() {
+        var btn = document.getElementById('dc-jump-btn');
+        if (!btn) return;
+        var dist = msgEl.scrollHeight - msgEl.scrollTop - msgEl.clientHeight;
+        btn.classList.toggle('visible', dist > 300);
+        if (dist <= 60) {
+          document.getElementById('dc-jump-badge').classList.remove('show');
+        }
+      });
+    }
+  }
+
+  // ── Init ─────────────────────────────────────────────────────────────────────
+
   function dcInit() {
     var ctx = {};
     try { ctx = JSON.parse(sessionStorage.getItem('docChatCtx') || '{}'); } catch(e) {}
@@ -602,34 +735,62 @@ var pageId = $v('pFlowStepId');
       if ($title.length) $title.text('Trao đổi — ' + ctx.doc_label + ': ' + ctx.doc_no);
     }
 
-    $('#dc-body').toggleClass('with-info', showInfo);
+    // Fetch HTML fragment from Static Application Files, inject, then load data
+    // apex.env.APP_IMAGES = path prefix to application-level static files
+    var imgBase = (apex.env && apex.env.APP_IMAGES) ? apex.env.APP_IMAGES : '';
+    var htmlUrl = imgBase + 'doc-chat.html';
 
-    loadConvList();
-    loadInfo();
+    fetch(htmlUrl, { cache: 'force-cache' })
+      .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      })
+      .then(function(html) {
+        var root = document.getElementById('doc-chat-root');
+        if (root) root.innerHTML = html;
+        setupAfterInject();
+        loadConvList();
+        loadInfo();
+      })
+      .catch(function(err) {
+        console.error('[DocChat] Không tải được doc-chat.html:', err);
+        var root = document.getElementById('doc-chat-root');
+        if (root) root.innerHTML =
+          '<div style="padding:32px;text-align:center;color:var(--n-400,#94A3B8);font-size:13px;">'
+          + 'Không tải được giao diện. Vui lòng tải lại trang.<br>'
+          + '<small style="opacity:.6">' + htmlUrl + '</small></div>';
+      });
   }
 
-  // ── Public API (cho Dynamic Actions + Execute-on-load gọi ngoài IIFE) ─────────
-  window.dcInit           = dcInit;
-  window.dcOnConvClick    = dcOnConvClick;
-  window.dcOnFilter       = dcOnFilter;
-  window.dcOnConvSearch   = dcOnConvSearch;
-  window.dcOnSearchToggle = dcOnSearchToggle;
-  window.dcOnMsgSearch    = dcOnMsgSearch;
-  window.dcOnToggleInfo   = dcOnToggleInfo;
-  window.dcOnReplyStart   = dcOnReplyStart;
-  window.dcOnReplyCancel  = dcOnReplyCancel;
-  window.dcOnSend         = dcOnSend;
-  window.dcOnMsgKeydown   = dcOnMsgKeydown;
-  window.dcOnMsgAutosize  = dcOnMsgAutosize;
-  window.dcOnMemberToggle = dcOnMemberToggle;
-  window.dcOnChipRemove   = dcOnChipRemove;
-  window.dcOnContactSearch= dcOnContactSearch;
-  window.dcOnTypeTab      = dcOnTypeTab;
-  window.dcOnOpenDM       = dcOnOpenDM;
-  window.dcOnOpenGroup    = dcOnOpenGroup;
-  window.dcOnCloseCompose = dcOnCloseCompose;
-  window.dcOnSubmitCreate = dcOnSubmitCreate;
-  // Giữ tương thích tên cũ
+  // ── Public API ────────────────────────────────────────────────────────────────
+
+  window.lpGoTo                = lpGoTo;
+  window.dcInit                = dcInit;
+  window.dcOnConvClick         = dcOnConvClick;
+  window.dcOnFilter            = dcOnFilter;
+  window.dcOnConvSearch        = dcOnConvSearch;
+  window.dcOnSearchToggle      = dcOnSearchToggle;
+  window.dcOnMsgSearch         = dcOnMsgSearch;
+  window.dcOnToggleInfo        = dcOnToggleInfo;
+  window.dcOnReplyStart        = dcOnReplyStart;
+  window.dcOnReplyCancel       = dcOnReplyCancel;
+  window.dcOnSend              = dcOnSend;
+  window.dcOnMsgKeydown        = dcOnMsgKeydown;
+  window.dcOnMsgAutosize       = dcOnMsgAutosize;
+  window.dcOnMemberToggle      = dcOnMemberToggle;
+  window.dcOnChipRemove        = dcOnChipRemove;
+  window.dcOnContactSearch     = dcOnContactSearch;
+  window.dcOnTypeTab           = dcOnTypeTab;
+  window.dcOnOpenDM            = dcOnOpenDM;
+  window.dcOnGoToGroupMembers  = dcOnGoToGroupMembers;
+  window.dcOnGroupNext         = dcOnGroupNext;
+  window.dcOnGroupInfoBack     = dcOnGroupInfoBack;
+  window.dcOnCloseCompose      = dcOnCloseCompose;
+  window.dcOnGroupBack         = dcOnGroupBack;
+  window.dcOnDMContactSelect   = dcOnDMContactSelect;
+  window.dcOnSubmitCreate      = dcOnSubmitCreate;
+  window.dcOnGroupNameInput    = dcOnGroupNameInput;
+  // Compatibility aliases
   window.dcOpenCompose  = openCompose;
   window.dcCloseCompose = closeCompose;
   window.dcLoadConvList = loadConvList;
