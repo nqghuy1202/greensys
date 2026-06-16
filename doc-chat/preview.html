@@ -4,757 +4,1278 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Doc Chat — Preview</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-    background: #E5E7EB;
-    min-height: 100vh;
-    display: flex; align-items: center; justify-content: center;
-    padding: 24px;
-  }
-
-  /* Giả lập APEX modal dialog */
-  .apex-modal-shell {
-    width: 1480px; max-width: 100%;
-    height: 860px; max-height: calc(100vh - 48px);
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 32px 80px -16px rgba(0,0,0,.32), 0 0 0 1px rgba(0,0,0,.08);
-    overflow: hidden;
-    display: flex; flex-direction: column;
-  }
-
-  /* Titlebar APEX */
-  .apex-titlebar {
-    background: #1a2332;
-    padding: 0 16px;
-    height: 44px;
-    display: flex; align-items: center; gap: 10px;
-    flex-shrink: 0;
-  }
-  .apex-title { color: rgba(255,255,255,.9); font-size: 13.5px; font-weight: 500; flex: 1; }
-  .apex-close {
-    width: 28px; height: 28px; border-radius: 6px;
-    background: rgba(255,255,255,.1); border: none; cursor: pointer;
-    display: grid; place-items: center; color: rgba(255,255,255,.7);
-    font-size: 16px; transition: background .15s;
-  }
-  .apex-close:hover { background: rgba(255,255,255,.18); color: #fff; }
-
-  /* Doc Chat content area */
-  #doc-chat-root {
-    flex: 1; min-height: 0;
-    display: flex; flex-direction: column;
-    overflow: hidden;
-  }
-
-  /* ── Switcher tabs ── */
-  .preview-tabs {
-    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-    background: rgba(17,24,39,.88); backdrop-filter: blur(8px);
-    border-radius: 999px; padding: 4px;
-    display: flex; gap: 2px; z-index: 9999;
-    box-shadow: 0 8px 24px rgba(0,0,0,.3);
-  }
-  .preview-tab {
-    padding: 6px 16px; border-radius: 999px; border: none;
-    font-size: 12.5px; font-weight: 500; cursor: pointer;
-    color: rgba(255,255,255,.6); background: transparent;
-    transition: background .15s, color .15s; font-family: inherit;
-  }
-  .preview-tab.active { background: #fff; color: #111; }
-</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="doc-chat.css">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Outfit', system-ui, sans-serif;
+  background: linear-gradient(135deg, #CBD5E1, #94A3B8);
+  min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+
+/* ── APEX modal shell ── */
+.apex-modal {
+  width: 1480px; max-width: 100%;
+  height: 860px; max-height: calc(100vh - 40px);
+  background: #fff; border-radius: 12px;
+  box-shadow: 0 32px 80px -16px rgba(0,0,0,.32), 0 0 0 1px rgba(0,0,0,.08);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.apex-titlebar {
+  background: #0D1A14; padding: 0 16px; height: 44px;
+  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+}
+.apex-title { color: rgba(255,255,255,.9); font-size: 13px; font-weight: 500; flex: 1; }
+.apex-close {
+  width: 28px; height: 28px; border-radius: 6px;
+  background: rgba(255,255,255,.1); border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(255,255,255,.7); font-size: 18px; transition: background .15s;
+}
+.apex-close:hover { background: rgba(255,255,255,.18); color: #fff; }
+
+/* ── Preview tabs ── */
+.preview-tabs {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: rgba(17,24,39,.9); backdrop-filter: blur(8px);
+  border-radius: 999px; padding: 4px; display: flex; gap: 2px; z-index: 9999;
+  box-shadow: 0 8px 24px rgba(0,0,0,.3);
+}
+.preview-tab {
+  padding: 6px 14px; border-radius: 999px; border: none;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  color: rgba(255,255,255,.55); background: transparent;
+  font-family: 'Outfit', system-ui, sans-serif;
+  transition: background .15s, color .15s;
+}
+.preview-tab.active { background: #fff; color: #111; }
+.preview-tab:hover:not(.active) { color: rgba(255,255,255,.85); }
+
+/* Avatar image overlay */
+.av-img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  border-radius: inherit; object-fit: cover;
+}
+</style>
 </head>
 <body>
 
-<div class="apex-modal-shell">
-  <!-- Titlebar giả lập APEX dialog -->
+<div class="apex-modal">
+
+  <!-- APEX Dialog titlebar -->
   <div class="apex-titlebar">
-    <i class="fa fa-comments" style="color:rgba(255,255,255,.5);font-size:13px"></i>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2" stroke-linecap="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
     <span class="apex-title">Trao đổi — Đơn hàng bán: SO-2601/010</span>
-    <button class="apex-close">×</button>
+    <button class="apex-close" title="Đóng">×</button>
   </div>
 
-  <!-- Doc Chat Root -->
+  <!-- ══ DOC CHAT ROOT ══ -->
   <div id="doc-chat-root">
-    <div class="modal">
+    <div class="dc-layout">
 
-      <!-- Context bar -->
-      <div class="dc-ctx-bar">
-        <i class="fa fa-file-invoice" style="color:var(--primary);font-size:11px"></i>
-        <span style="font-weight:600;color:var(--primary)">SO-2601/010</span>
-        <span style="color:var(--text-3)">·</span>
-        <span>Đơn hàng bán</span>
-        <span style="color:var(--text-3)">·</span>
-        <span style="color:var(--text-3)">Công ty TNHH Thương mại Phú Thịnh</span>
+      <!-- ════════════════════════════════
+           LEFT PANEL — 268px
+           ════════════════════════════════ -->
+      <div class="dc-left">
+        <div id="lp-track">
+
+          <!-- ── S1: Conversation list ── -->
+          <div id="lp-s1">
+
+            <!-- Header -->
+            <div class="lp-header">
+              <div style="display:flex;align-items:center;gap:9px;">
+                <div style="width:28px;height:28px;border-radius:8px;background:var(--c-main);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                </div>
+                <span class="lp-title">Hội thoại</span>
+              </div>
+              <button class="dc-icon-btn" title="Tạo hội thoại mới" onclick="window.dcOnOpenDM(this, event)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Search -->
+            <div class="dc-search-wrap">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input type="text" placeholder="Tìm hội thoại..." id="dc-conv-search"
+                oninput="window.dcOnConvSearch(this, event)">
+            </div>
+
+            <!-- Filter tabs -->
+            <div class="dc-filter-tabs">
+              <button class="dc-filter-tab active" data-filter="ALL"
+                onclick="window.dcOnFilter(this, event)">Tất cả</button>
+              <button class="dc-filter-tab" data-filter="DOC"
+                onclick="window.dcOnFilter(this, event)">Chứng từ</button>
+              <button class="dc-filter-tab" data-filter="CHANNEL"
+                onclick="window.dcOnFilter(this, event)">Nhóm</button>
+              <button class="dc-filter-tab" data-filter="DM"
+                onclick="window.dcOnFilter(this, event)">Cá nhân</button>
+            </div>
+
+            <!-- Conv list — mirrors dcConvListHtml output -->
+            <div id="lp-conv-list" class="thin-scroll">
+
+              <div class="lp-section-label">Chứng từ này</div>
+
+              <!-- Conv 1: Channel (document-scoped) — Active -->
+              <button type="button" class="dc-conv-item dc-conv-active"
+                data-conv-id="101" data-partner-aus-id=""
+                onclick="window.dcOnConvClick(this, event)">
+                <div class="dc-av-wrap">
+                  <div class="dc-av square group" style="font-size:11px;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                  </div>
+                </div>
+                <div class="dc-conv-content">
+                  <div class="dc-conv-row1">
+                    <span class="dc-conv-name">SO-2601/010 — Thảo luận</span>
+                    <span class="dc-conv-time">10:32</span>
+                  </div>
+                  <div class="dc-conv-row2">
+                    <span class="dc-conv-preview">
+                      <span class="dc-conv-sender">Bạn:</span> OK nhé. Mọi người chuẩn bị nhé!
+                    </span>
+                  </div>
+                </div>
+              </button>
+
+              <div class="lp-section-label" style="margin-top:4px">Hội thoại khác</div>
+
+              <!-- Conv 2: DM — Unread -->
+              <button type="button" class="dc-conv-item unread"
+                data-conv-id="55" data-partner-aus-id="12"
+                onclick="window.dcOnConvClick(this, event)">
+                <div class="dc-av-wrap">
+                  <div class="dc-av" style="background:hsl(141,55%,45%);position:relative;">M
+                    <img class="av-img" src="" onerror="this.remove()">
+                  </div>
+                  <div class="dc-av-presence"></div>
+                </div>
+                <div class="dc-conv-content">
+                  <div class="dc-conv-row1">
+                    <span class="dc-conv-name">Trần Thị Mai</span>
+                    <span class="dc-conv-time">09:15</span>
+                  </div>
+                  <div class="dc-conv-row2">
+                    <span class="dc-conv-preview">Đã duyệt đơn hàng, chờ xuất kho</span>
+                    <div class="dc-conv-badge">2</div>
+                  </div>
+                </div>
+              </button>
+
+              <!-- Conv 3: Group channel -->
+              <button type="button" class="dc-conv-item"
+                data-conv-id="72" data-partner-aus-id=""
+                onclick="window.dcOnConvClick(this, event)">
+                <div class="dc-av-wrap">
+                  <div class="dc-av square group">KD</div>
+                  <div class="dc-av-type-dot group">
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                      <circle cx="9" cy="7" r="4"/>
+                    </svg>
+                  </div>
+                </div>
+                <div class="dc-conv-content">
+                  <div class="dc-conv-row1">
+                    <span class="dc-conv-name">Nhóm Kinh Doanh Q1</span>
+                    <span class="dc-conv-time">Hôm qua</span>
+                  </div>
+                  <div class="dc-conv-row2">
+                    <span class="dc-conv-preview">
+                      <span class="dc-conv-sender">Long:</span> Meeting lúc 2h chiều nha
+                    </span>
+                  </div>
+                </div>
+              </button>
+
+              <!-- Conv 4: DM — Away -->
+              <button type="button" class="dc-conv-item"
+                data-conv-id="48" data-partner-aus-id="27"
+                onclick="window.dcOnConvClick(this, event)">
+                <div class="dc-av-wrap">
+                  <div class="dc-av" style="background:hsl(329,55%,55%);">L</div>
+                  <div class="dc-av-presence away"></div>
+                </div>
+                <div class="dc-conv-content">
+                  <div class="dc-conv-row1">
+                    <span class="dc-conv-name">Nguyễn Văn Long</span>
+                    <span class="dc-conv-time">Hôm qua</span>
+                  </div>
+                  <div class="dc-conv-row2">
+                    <span class="dc-conv-preview">Ok anh, em sẽ gửi báo giá ngay</span>
+                  </div>
+                </div>
+              </button>
+
+              <!-- Conv 5: DM — Offline -->
+              <button type="button" class="dc-conv-item"
+                data-conv-id="31" data-partner-aus-id="9"
+                onclick="window.dcOnConvClick(this, event)">
+                <div class="dc-av-wrap">
+                  <div class="dc-av" style="background:hsl(47,55%,52%);">P</div>
+                  <div class="dc-av-presence offline"></div>
+                </div>
+                <div class="dc-conv-content">
+                  <div class="dc-conv-row1">
+                    <span class="dc-conv-name">Lê Thị Phương</span>
+                    <span class="dc-conv-time">25/06</span>
+                  </div>
+                  <div class="dc-conv-row2">
+                    <span class="dc-conv-preview">Tài liệu kỹ thuật đã upload lên hệ thống</span>
+                  </div>
+                </div>
+              </button>
+
+            </div><!-- /lp-conv-list -->
+          </div><!-- /lp-s1 -->
+
+          <!-- ── S2: New DM — Contact Picker ── -->
+          <div id="lp-s2">
+            <div class="lp-s-header">
+              <button type="button" class="dc-icon-btn" style="width:30px;height:30px;"
+                onclick="window.dcOnCloseCompose(this, event)" title="Quay lại">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <span class="lp-s-title">Hội thoại mới</span>
+            </div>
+            <div class="dc-search-wrap" style="padding-top:12px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input type="text" id="lp-s2-search" placeholder="Tìm theo tên..."
+                oninput="window.dcOnContactSearch(this, event)" autocomplete="off">
+            </div>
+            <div id="lp-online-strip">
+              <div style="display:inline-flex;align-items:center;gap:5px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:100px;padding:3px 10px 3px 7px;">
+                <span style="width:6px;height:6px;border-radius:50%;background:#22C55E;display:inline-block;"></span>
+                <span style="font-size:11px;font-weight:600;color:#16A34A;">4 đang online</span>
+              </div>
+            </div>
+            <!-- S2 contacts — mirrors dcContactsHtml (DM format) output -->
+            <div id="lp-s2-list" class="thin-scroll" style="flex:1;overflow-y:auto;padding:4px 8px 8px;">
+              <div class="lp-alpha">Kế toán</div>
+              <button type="button" class="lp-cr"
+                data-aus-id="12" data-name="An Nguyễn" data-dept="Kế toán"
+                onclick="window.dcOnDMContactSelect(this, event)">
+                <div style="width:36px;height:36px;border-radius:50%;background:hsl(47,55%,52%);display:flex;align-items:center;justify-content:center;color:white;font-size:12px;font-weight:700;flex-shrink:0;position:relative;">A</div>
+                <div style="flex:1;min-width:0;text-align:left;">
+                  <div style="font-size:13px;font-weight:600;color:var(--n-800);">An Nguyễn</div>
+                  <div style="font-size:11.5px;color:var(--n-400);">Kế toán</div>
+                </div>
+                <div style="width:7px;height:7px;border-radius:50%;background:var(--online);flex-shrink:0;"></div>
+              </button>
+              <button type="button" class="lp-cr"
+                data-aus-id="9" data-name="Lê Thị Phương" data-dept="Kế toán"
+                onclick="window.dcOnDMContactSelect(this, event)">
+                <div style="width:36px;height:36px;border-radius:50%;background:hsl(47,55%,52%);display:flex;align-items:center;justify-content:center;color:white;font-size:12px;font-weight:700;flex-shrink:0;">P</div>
+                <div style="flex:1;min-width:0;text-align:left;">
+                  <div style="font-size:13px;font-weight:600;color:var(--n-800);">Lê Thị Phương</div>
+                  <div style="font-size:11.5px;color:var(--n-400);">Kế toán</div>
+                </div>
+              </button>
+              <div class="lp-alpha">Kinh doanh</div>
+              <button type="button" class="lp-cr"
+                data-aus-id="5" data-name="Bình Trần" data-dept="Kinh doanh"
+                onclick="window.dcOnDMContactSelect(this, event)">
+                <div style="width:36px;height:36px;border-radius:50%;background:hsl(188,55%,45%);display:flex;align-items:center;justify-content:center;color:white;font-size:12px;font-weight:700;flex-shrink:0;">B</div>
+                <div style="flex:1;min-width:0;text-align:left;">
+                  <div style="font-size:13px;font-weight:600;color:var(--n-800);">Bình Trần</div>
+                  <div style="font-size:11.5px;color:var(--n-400);">Kinh doanh</div>
+                </div>
+                <div style="width:7px;height:7px;border-radius:50%;background:var(--online);flex-shrink:0;"></div>
+              </button>
+              <button type="button" class="lp-cr"
+                data-aus-id="27" data-name="Nguyễn Văn Long" data-dept="Kinh doanh"
+                onclick="window.dcOnDMContactSelect(this, event)">
+                <div style="width:36px;height:36px;border-radius:50%;background:hsl(329,55%,55%);display:flex;align-items:center;justify-content:center;color:white;font-size:12px;font-weight:700;flex-shrink:0;">L</div>
+                <div style="flex:1;min-width:0;text-align:left;">
+                  <div style="font-size:13px;font-weight:600;color:var(--n-800);">Nguyễn Văn Long</div>
+                  <div style="font-size:11.5px;color:var(--n-400);">Kinh doanh</div>
+                </div>
+              </button>
+            </div>
+            <div style="padding:12px;border-top:1px solid var(--n-200);flex-shrink:0;">
+              <button type="button" class="dc-btn-primary"
+                onclick="window.dcOnGoToGroupMembers(this, event)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+                Tạo nhóm
+              </button>
+            </div>
+          </div><!-- /lp-s2 -->
+
+          <!-- ── S3: Add Members ── -->
+          <div id="lp-s3">
+            <div class="lp-s-header">
+              <button type="button" class="dc-icon-btn" style="width:30px;height:30px;"
+                onclick="window.dcOnGroupBack(this, event)" title="Quay lại">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <span class="lp-s-title">Thêm thành viên</span>
+              <span class="lp-s-step-pill">1/2</span>
+            </div>
+            <!-- Chips area -->
+            <div id="lp-s3-chips">
+              <div class="lp-gc">
+                <div class="lp-gc-av" style="background:hsl(141,55%,45%);">A</div>
+                <span>An</span>
+                <button type="button" class="lp-gc-x" data-chip-id="12"
+                  onclick="window.dcOnChipRemove(this, event)">
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+              <div class="lp-gc">
+                <div class="lp-gc-av" style="background:hsl(47,55%,52%);">B</div>
+                <span>Bình</span>
+                <button type="button" class="lp-gc-x" data-chip-id="5"
+                  onclick="window.dcOnChipRemove(this, event)">
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="dc-search-wrap" style="padding-top:10px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input type="text" id="lp-s3-search" placeholder="Tìm thành viên..."
+                oninput="window.dcOnContactSearch(this, event)" autocomplete="off">
+            </div>
+            <!-- S3 member list — mirrors dcContactsHtml (GROUP format) output -->
+            <div id="lp-s3-list" class="thin-scroll" style="flex:1;overflow-y:auto;padding:4px 8px;">
+              <div class="lp-alpha">Kế toán</div>
+              <button type="button" class="gm-row gm-sel"
+                data-aus-id="12" data-name="An Nguyễn" data-dept="Kế toán" data-hue="47"
+                onclick="window.dcOnMemberToggle(this, event)">
+                <div class="gm-av-wrap">
+                  <div class="gm-av" style="background:hsl(47,55%,52%);">A</div>
+                  <div class="gm-chk">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size:13px;font-weight:600;color:var(--n-800);">An Nguyễn</div>
+                  <div style="font-size:11.5px;color:var(--n-400);">Kế toán</div>
+                </div>
+              </button>
+              <div class="lp-alpha">Kinh doanh</div>
+              <button type="button" class="gm-row gm-sel"
+                data-aus-id="5" data-name="Bình Trần" data-dept="Kinh doanh" data-hue="188"
+                onclick="window.dcOnMemberToggle(this, event)">
+                <div class="gm-av-wrap">
+                  <div class="gm-av" style="background:hsl(188,55%,45%);">B</div>
+                  <div class="gm-chk">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size:13px;font-weight:600;color:var(--n-800);">Bình Trần</div>
+                  <div style="font-size:11.5px;color:var(--n-400);">Kinh doanh</div>
+                </div>
+              </button>
+              <button type="button" class="gm-row"
+                data-aus-id="27" data-name="Nguyễn Văn Long" data-dept="Kinh doanh" data-hue="329"
+                onclick="window.dcOnMemberToggle(this, event)">
+                <div class="gm-av-wrap">
+                  <div class="gm-av" style="background:hsl(329,55%,55%);">L</div>
+                  <div class="gm-chk">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size:13px;font-weight:600;color:var(--n-800);">Nguyễn Văn Long</div>
+                  <div style="font-size:11.5px;color:var(--n-400);">Kinh doanh</div>
+                </div>
+              </button>
+            </div>
+            <div class="lp-gm-footer">
+              <span class="lp-gm-count">Đã chọn 2</span>
+              <button type="button" class="lp-gm-next lp-gm-ok"
+                onclick="window.dcOnGroupNext(this, event)">
+                Tiếp theo
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            </div>
+          </div><!-- /lp-s3 -->
+
+          <!-- ── S4: Group Info ── -->
+          <div id="lp-s4">
+            <div class="lp-s-header" style="position:sticky;top:0;background:var(--n-50);z-index:1;">
+              <button type="button" class="dc-icon-btn" style="width:30px;height:30px;"
+                onclick="window.dcOnGroupInfoBack(this, event)" title="Quay lại">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <span class="lp-s-title">Nhóm mới</span>
+              <span class="lp-s-step-pill" style="background:#F0FDF4;color:#16A34A;">2/2</span>
+            </div>
+            <div class="lp-gi-av-wrap">
+              <div class="lp-gi-av lp-av-empty" id="lp-gi-av">
+                <svg id="lp-av-empty-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+                <div id="lp-av-initials" class="lp-gi-av-letters"></div>
+              </div>
+              <span class="lp-gi-av-label">Ảnh nhóm</span>
+            </div>
+            <div class="lp-gi-field lp-gi-first">
+              <label class="lp-gi-label" for="lp-gname">Tên nhóm</label>
+              <input type="text" class="lp-gi-input" id="lp-gname"
+                placeholder="VD: Nhóm dự án ABC"
+                oninput="window.dcOnGroupNameInput(this, event)" autocomplete="off">
+            </div>
+            <div class="lp-gi-field">
+              <label class="lp-gi-label" for="lp-gdesc">Mô tả</label>
+              <input type="text" class="lp-gi-input" id="lp-gdesc"
+                placeholder="Mục đích nhóm... (không bắt buộc)">
+            </div>
+            <div class="lp-gi-members-bar">
+              <div style="width:28px;height:28px;border-radius:50%;background:var(--c-tint);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-main)" stroke-width="2.2" stroke-linecap="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+              </div>
+              <span style="font-size:12.5px;color:var(--n-500);font-weight:500;">2 thành viên được chọn</span>
+            </div>
+            <button type="button" id="lp-create-btn" class="lp-create-btn" disabled
+              onclick="window.dcOnSubmitCreate(this, event)">Tạo nhóm</button>
+          </div><!-- /lp-s4 -->
+
+        </div><!-- /lp-track -->
+      </div><!-- /dc-left -->
+
+      <!-- ════════════════════════════════
+           CENTER PANEL — flex:1
+           ════════════════════════════════ -->
+      <div class="dc-center" id="dc-center">
+
+        <!-- Drag & drop overlay -->
+        <div id="dc-drop-overlay">
+          <div style="width:56px;height:56px;border-radius:50%;background:var(--c-tint);border:2px solid var(--c-border);display:flex;align-items:center;justify-content:center;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-main)" stroke-width="2" stroke-linecap="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <div style="font-size:14px;font-weight:600;color:var(--c-main);">Thả file vào đây</div>
+          <div style="font-size:12.5px;color:var(--n-500);">Hỗ trợ ảnh, PDF, Word, Excel</div>
+        </div>
+
+        <!-- Chat header — reflects selected conv -->
+        <div class="dc-chat-header">
+          <div class="dc-header-left">
+            <div class="dc-header-avatar square group" style="font-size:11px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+            </div>
+            <div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="dc-header-name">SO-2601/010 — Thảo luận</span>
+                <span class="dc-type-badge channel">Nhóm</span>
+              </div>
+              <div class="dc-header-sub">
+                <span class="dc-header-online-dot"></span>
+                5 thành viên · 2 đang online
+              </div>
+            </div>
+          </div>
+          <div class="dc-header-right">
+            <!-- Search in thread -->
+            <button type="button" class="dc-icon-btn" style="width:32px;height:32px;"
+              title="Tìm trong hội thoại" onclick="window.dcOnSearchToggle(this, event)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+              </svg>
+            </button>
+            <!-- Toggle right panel -->
+            <button type="button" class="dc-icon-btn" id="dc-toggle-rp-btn"
+              style="width:32px;height:32px;color:var(--c-main);" title="Thông tin"
+              onclick="window.dcOnToggleInfo(this, event)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
+              </svg>
+            </button>
+            <div class="dc-header-divider"></div>
+            <!-- Close -->
+            <button type="button" class="dc-icon-btn" title="Đóng" style="width:32px;height:32px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Search bar inside thread (hidden by default) -->
+        <div id="dc-msg-search-bar" style="display:none;padding:8px 16px;border-bottom:1px solid var(--n-100);background:var(--n-50);flex-shrink:0;">
+          <div class="dc-search-wrap" style="padding:0;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input type="text" id="dc-msg-search-input" placeholder="Tìm trong hội thoại..."
+              oninput="window.dcOnMsgSearch(this, event)" autocomplete="off">
+          </div>
+        </div>
+
+        <!-- Pin banner -->
+        <div id="dc-pin-banner" class="visible">
+          <div class="dc-pin-accent"></div>
+          <div style="flex:1;min-width:0;">
+            <div class="dc-pin-label">Tin ghim</div>
+            <div class="dc-pin-text">Khách hàng xác nhận giao hàng ngày 28/06 tại kho Thủ Đức</div>
+          </div>
+          <button type="button" class="dc-pin-close"
+            onclick="this.closest('#dc-pin-banner').classList.remove('visible')">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Messages wrapper -->
+        <div class="dc-messages-wrap">
+
+          <!-- Jump to latest -->
+          <button type="button" class="dc-jump-btn" id="dc-jump-btn"
+            onclick="document.getElementById('dc-messages').scrollTop=99999;this.classList.remove('visible');document.getElementById('dc-jump-badge').classList.remove('show');">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <div class="dc-jump-badge" id="dc-jump-badge">3</div>
+          </button>
+
+          <!-- Messages — mirrors dcMsgThreadHtml output -->
+          <div id="dc-messages" class="thin-scroll">
+
+            <div class="dc-date-sep">25 tháng 6, 2026</div>
+
+            <!-- MSG 1: Mai — start of group -->
+            <div class="message-group" data-msg-id="1">
+              <div class="msg-actions">
+                <button type="button" class="msg-action-btn" title="React">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                </button>
+                <button type="button" class="msg-action-btn" data-action="reply" title="Trả lời"
+                  onclick="window.dcOnReplyStart(this, event)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                </button>
+                <button type="button" class="msg-action-btn" title="Thêm">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                </button>
+              </div>
+              <div class="msg-inner">
+                <div class="msg-avatar-col" style="background:hsl(141,55%,45%);position:relative;">M</div>
+                <div class="msg-content-col">
+                  <div class="msg-header">
+                    <span class="msg-sender">Trần Thị Mai</span>
+                    <span class="msg-time">09:10</span>
+                  </div>
+                  <div class="msg-text">
+                    Chào anh Huy, đơn
+                    <span class="dc-doc-chip so">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                      SO-2601/010
+                    </span>
+                    đã được phòng kế toán duyệt xong. Anh kiểm tra lại giá trị cuối cùng giúp em nhé.
+                  </div>
+                  <div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap;">
+                    <button type="button" class="dc-reaction reacted">👍 <span class="count">3</span></button>
+                    <button type="button" class="dc-reaction">✅ <span class="count">1</span></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- MSG 2: Mai — consecutive -->
+            <div class="message-group" data-msg-id="2" style="margin-bottom:8px;">
+              <div class="msg-actions">
+                <button type="button" class="msg-action-btn" title="React">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                </button>
+                <button type="button" class="msg-action-btn" data-action="reply" title="Trả lời"
+                  onclick="window.dcOnReplyStart(this, event)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                </button>
+                <button type="button" class="msg-action-btn" title="Thêm">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                </button>
+              </div>
+              <div class="msg-inner">
+                <div class="msg-avatar-col hidden"></div>
+                <div class="msg-content-col">
+                  <div class="msg-text">Em cũng đính kèm báo cáo kiểm tra cuối kỳ:</div>
+                  <div class="dc-file-card">
+                    <div class="dc-file-icon" style="background:#FEE2E2;">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="1.8" stroke-linecap="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                      </svg>
+                    </div>
+                    <div style="flex:1;min-width:0;">
+                      <div class="dc-file-name">bao-cao-kiem-tra-Q2.pdf</div>
+                      <div class="dc-file-meta">2.4 MB · PDF</div>
+                    </div>
+                    <span class="dc-file-dl">Tải</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Unread divider -->
+            <div class="dc-unread-divider">
+              <div class="dc-unread-pill">Tin nhắn chưa đọc</div>
+            </div>
+
+            <!-- MSG 3: Huy (me) -->
+            <div class="message-group msg-me-wrap" data-msg-id="3" style="margin-top:10px;">
+              <div class="msg-actions">
+                <button type="button" class="msg-action-btn" title="React">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                </button>
+                <button type="button" class="msg-action-btn" data-action="reply" title="Trả lời"
+                  onclick="window.dcOnReplyStart(this, event)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                </button>
+                <button type="button" class="msg-action-btn" title="Thêm">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                </button>
+              </div>
+              <div class="msg-me-inner">
+                <div class="msg-me-time">10:05</div>
+                <div class="msg-me-bubble">Anh đã xem rồi. Giá trị khớp với hợp đồng. Cho anh xác nhận chốt đơn nhé!</div>
+              </div>
+            </div>
+
+            <!-- MSG 4: Huy (me) — with reply quote, consecutive -->
+            <div class="message-group msg-me-wrap" data-msg-id="4" style="margin-bottom:8px;">
+              <div class="msg-actions">
+                <button type="button" class="msg-action-btn" data-action="reply" title="Trả lời"
+                  onclick="window.dcOnReplyStart(this, event)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                </button>
+                <button type="button" class="msg-action-btn" title="Thêm">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                </button>
+              </div>
+              <div class="msg-me-inner">
+                <div class="msg-me-bubble">
+                  <div class="reply-quote-me">
+                    <div class="rq-name">Trần Thị Mai</div>
+                    <div class="rq-text">đơn SO-2601/010 đã được phòng kế toán duyệt xong</div>
+                  </div>
+                  Cảm ơn Mai. Anh ghi nhận. Em lưu hồ sơ gốc vào thư mục ERP_2026/Q2 giúp anh nha.
+                </div>
+              </div>
+            </div>
+
+            <!-- MSG 5: Long — with image -->
+            <div class="message-group" data-msg-id="5" style="margin-top:10px;margin-bottom:8px;">
+              <div class="msg-actions">
+                <button type="button" class="msg-action-btn" title="React">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                </button>
+                <button type="button" class="msg-action-btn" data-action="reply" title="Trả lời"
+                  onclick="window.dcOnReplyStart(this, event)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                </button>
+                <button type="button" class="msg-action-btn" title="Thêm">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                </button>
+              </div>
+              <div class="msg-inner">
+                <div class="msg-avatar-col" style="background:hsl(329,55%,55%);position:relative;">L</div>
+                <div class="msg-content-col">
+                  <div class="msg-header">
+                    <span class="msg-sender">Nguyễn Văn Long</span>
+                    <span class="msg-time">10:22</span>
+                  </div>
+                  <div class="msg-text">Ảnh hàng tại kho trước khi xuất:</div>
+                  <a class="dc-img-card" href="#" onclick="openLightbox(this.querySelector('img').src);return false;">
+                    <img src="https://picsum.photos/seed/warehouse-goods/680/360" alt="Kho hàng" loading="lazy">
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <!-- MSG 6: Huy (me) — latest -->
+            <div class="message-group msg-me-wrap" data-msg-id="6" style="margin-top:10px;">
+              <div class="msg-actions">
+                <button type="button" class="msg-action-btn" data-action="reply" title="Trả lời"
+                  onclick="window.dcOnReplyStart(this, event)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                </button>
+                <button type="button" class="msg-action-btn" title="Thêm">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                </button>
+              </div>
+              <div class="msg-me-inner">
+                <div class="msg-me-time">10:32</div>
+                <div class="msg-me-bubble">OK nhé. Khách hàng xác nhận giao hàng ngày 28/06 tại kho Thủ Đức. Mọi người chuẩn bị nhé!</div>
+              </div>
+            </div>
+
+            <!-- Typing indicator — hidden by default, JS toggle -->
+            <div id="dc-typing-row" style="display:none;align-items:center;gap:8px;padding:4px 8px 0;margin-top:4px;">
+              <div class="msg-avatar-col" style="width:30px;height:30px;background:hsl(141,55%,45%);font-size:10px;">M</div>
+              <div class="dc-typing-bubble">
+                <div class="dc-typing-dot"></div>
+                <div class="dc-typing-dot"></div>
+                <div class="dc-typing-dot"></div>
+                <span class="dc-typing-label">Mai đang gõ</span>
+              </div>
+            </div>
+
+            <div style="height:16px;"></div>
+
+          </div><!-- /dc-messages -->
+        </div><!-- /dc-messages-wrap -->
+
+        <!-- Composer -->
+        <div class="dc-composer-wrap">
+          <div class="dc-input-box">
+
+            <!-- Reply preview — hidden by default -->
+            <div id="dc-reply-preview">
+              <div class="dc-rp-accent"></div>
+              <div class="dc-rp-info">
+                <div class="dc-rp-sender">Trần Thị Mai</div>
+                <div class="dc-rp-text">đơn SO-2601/010 đã được phòng kế toán duyệt xong</div>
+              </div>
+              <button type="button" class="dc-rp-close"
+                onclick="window.dcOnReplyCancel(this, event)">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            <!-- File preview bar — hidden by default -->
+            <div id="dc-file-preview-bar">
+              <div class="dc-file-thumb">
+                <div class="dc-file-thumb-inner" style="background:#FEE2E2;display:flex;align-items:center;justify-content:center;">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="1.8" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
+                </div>
+                <button type="button" class="dc-file-thumb-remove">
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Formatting toolbar -->
+            <div class="dc-toolbar">
+              <button type="button" class="dc-tb-btn" title="In đậm (Ctrl+B)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/>
+                </svg>
+              </button>
+              <button type="button" class="dc-tb-btn" title="In nghiêng (Ctrl+I)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/>
+                </svg>
+              </button>
+              <button type="button" class="dc-tb-btn" title="Code">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                </svg>
+              </button>
+              <div class="dc-tb-sep"></div>
+              <button type="button" class="dc-tb-btn" title="Link">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                </svg>
+              </button>
+              <button type="button" class="dc-tb-btn" title="Danh sách">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                  <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Text input (contenteditable) -->
+            <div id="dc-chat-input"
+              contenteditable="true"
+              data-placeholder="Nhắn tin..."
+              onkeydown="window.dcOnMsgKeydown(this, event)"
+              oninput="window.dcOnMsgAutosize(this, event)"></div>
+
+            <!-- Bottom row -->
+            <div class="dc-input-bottom">
+              <button type="button" class="dc-icon-btn" title="Đính kèm file">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              </button>
+              <button type="button" class="dc-icon-btn" title="Chọn ảnh">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              </button>
+              <div class="dc-emoji-wrap">
+                <button type="button" class="dc-icon-btn" title="Emoji" onclick="toggleEmojiPicker()">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                </button>
+                <div id="dc-emoji-picker">
+                  <input class="dc-emoji-search" type="text" placeholder="Tìm emoji...">
+                  <div class="dc-emoji-cat-label">Hay dùng</div>
+                  <div class="dc-emoji-grid">
+                    <button type="button" class="dc-emoji-btn">😀</button>
+                    <button type="button" class="dc-emoji-btn">😊</button>
+                    <button type="button" class="dc-emoji-btn">👍</button>
+                    <button type="button" class="dc-emoji-btn">🎉</button>
+                    <button type="button" class="dc-emoji-btn">❤️</button>
+                    <button type="button" class="dc-emoji-btn">🔥</button>
+                    <button type="button" class="dc-emoji-btn">✅</button>
+                    <button type="button" class="dc-emoji-btn">👏</button>
+                    <button type="button" class="dc-emoji-btn">😂</button>
+                    <button type="button" class="dc-emoji-btn">🙏</button>
+                    <button type="button" class="dc-emoji-btn">💯</button>
+                    <button type="button" class="dc-emoji-btn">⚡</button>
+                    <button type="button" class="dc-emoji-btn">🤝</button>
+                    <button type="button" class="dc-emoji-btn">📋</button>
+                    <button type="button" class="dc-emoji-btn">📊</button>
+                    <button type="button" class="dc-emoji-btn">💼</button>
+                  </div>
+                  <div class="dc-emoji-cat-label">Ký hiệu</div>
+                  <div class="dc-emoji-grid">
+                    <button type="button" class="dc-emoji-btn">⚠️</button>
+                    <button type="button" class="dc-emoji-btn">ℹ️</button>
+                    <button type="button" class="dc-emoji-btn">📌</button>
+                    <button type="button" class="dc-emoji-btn">🔔</button>
+                    <button type="button" class="dc-emoji-btn">📎</button>
+                    <button type="button" class="dc-emoji-btn">🔗</button>
+                    <button type="button" class="dc-emoji-btn">✏️</button>
+                    <button type="button" class="dc-emoji-btn">🗒️</button>
+                  </div>
+                </div>
+              </div>
+              <button type="button" class="dc-icon-btn" title="Mention @">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"/></svg>
+              </button>
+              <button type="button" id="dc-send-btn" title="Gửi (Enter)"
+                onclick="window.dcOnSend(this, event)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="dc-enter-hint">
+            <kbd>Enter</kbd><span>gửi</span>
+            <span style="margin:0 3px;">·</span>
+            <kbd>Shift+Enter</kbd><span>xuống dòng</span>
+          </div>
+        </div><!-- /dc-composer-wrap -->
+
+      </div><!-- /dc-center -->
+
+      <!-- ════════════════════════════════
+           RIGHT PANEL — 272px
+           (mirrors dcInfoHtml output)
+           ════════════════════════════════ -->
+      <div class="dc-right thin-scroll" id="dc-right-panel">
+
+        <!-- Voucher card — JS fills via injectDocFields() -->
+        <div class="dc-voucher-card">
+          <div class="dc-voucher-no">
+            <span id="dc-doc-no">SO-2601/010</span>
+            <span class="dc-voucher-status" id="dc-doc-status">Chờ duyệt</span>
+          </div>
+          <div class="dc-voucher-type" id="dc-doc-label">Đơn hàng bán · Tạo ngày 20/06/2026</div>
+          <div class="dc-voucher-rows" id="dc-doc-fields-placeholder">
+            <div class="dc-voucher-row"><span class="k">Khách hàng</span><span class="v">Công ty TNHH ABC</span></div>
+            <div class="dc-voucher-row"><span class="k">Nhân viên</span><span class="v">Nguyễn Văn Huy</span></div>
+          </div>
+          <hr class="dc-voucher-divider">
+          <div class="dc-voucher-row">
+            <span class="k">Tổng tiền</span>
+            <span class="v money" id="dc-doc-total">542.000.000 ₫</span>
+          </div>
+        </div>
+
+        <!-- Quick actions -->
+        <div class="dc-rp-actions" style="padding:12px 12px 4px;">
+          <button type="button" class="dc-rp-action" id="dc-qa-open">
+            <div class="dc-rp-action-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+              </svg>
+            </div>
+            <span class="dc-rp-action-label">Mở đơn</span>
+          </button>
+          <button type="button" class="dc-rp-action" id="dc-qa-search"
+            onclick="window.dcOnSearchToggle(document.querySelector('#dc-toggle-rp-btn~.dc-icon-btn'), event)">
+            <div class="dc-rp-action-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+              </svg>
+            </div>
+            <span class="dc-rp-action-label">Tìm tin</span>
+          </button>
+        </div>
+
+        <!-- Section: Members -->
+        <div class="dc-rp-section">
+          <div class="dc-rp-section-header" onclick="toggleSection(this)">
+            <span class="dc-rp-section-title" id="dc-member-count-title">Thành viên (5)</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--n-400)" stroke-width="2.5" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg>
+          </div>
+          <div class="dc-rp-section-body">
+            <!-- mirrors dcInfoHtml member loop output -->
+            <div class="dc-rp-member">
+              <div class="dc-rp-member-av" style="background:hsl(94,45%,45%);">H</div>
+              <div style="flex:1;min-width:0;">
+                <div class="dc-rp-member-name">Nguyễn Văn Huy <span style="color:var(--n-400);font-size:11px;font-weight:400">(bạn)</span></div>
+                <div class="dc-rp-member-role">Giám đốc kinh doanh</div>
+              </div>
+              <span class="dc-rp-badge owner">Owner</span>
+            </div>
+            <div class="dc-rp-member">
+              <div class="dc-rp-member-av" style="background:hsl(141,55%,45%);">M</div>
+              <div style="flex:1;min-width:0;">
+                <div class="dc-rp-member-name">Trần Thị Mai</div>
+                <div class="dc-rp-member-role">Kế toán</div>
+              </div>
+            </div>
+            <div class="dc-rp-member">
+              <div class="dc-rp-member-av" style="background:hsl(329,55%,55%);">L</div>
+              <div style="flex:1;min-width:0;">
+                <div class="dc-rp-member-name">Nguyễn Văn Long</div>
+                <div class="dc-rp-member-role">Kinh doanh</div>
+              </div>
+            </div>
+            <div style="padding:4px 16px 8px;">
+              <button type="button" style="font-size:12px;color:var(--c-main);font-weight:600;background:none;border:none;cursor:pointer;padding:0;font-family:'Outfit',system-ui,sans-serif;">
+                + Xem thêm 2 người
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Files -->
+        <div class="dc-rp-section">
+          <div class="dc-rp-section-header" onclick="toggleSection(this)">
+            <span class="dc-rp-section-title">File đã chia sẻ</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--n-400)" stroke-width="2.5" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg>
+          </div>
+          <div class="dc-rp-section-body">
+            <div class="dc-media-grid">
+              <div class="dc-media-thumb"><img src="https://picsum.photos/seed/file1/120/120" alt="" loading="lazy"></div>
+              <div class="dc-media-thumb"><img src="https://picsum.photos/seed/file2/120/120" alt="" loading="lazy"></div>
+              <div class="dc-media-thumb"><img src="https://picsum.photos/seed/file3/120/120" alt="" loading="lazy"></div>
+            </div>
+            <div style="padding:0 16px 8px;">
+              <div style="display:flex;align-items:center;gap:10px;padding:6px;border-radius:6px;cursor:pointer;transition:background .1s;"
+                onmouseover="this.style.background='var(--n-50)'" onmouseout="this.style.background=''">
+                <div style="width:30px;height:30px;background:var(--danger-bg);border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="1.8" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:12.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">bao-cao-kiem-tra-Q2.pdf</div>
+                  <div style="font-size:11px;color:var(--n-400);">2.4 MB · 25/06</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="height:24px;"></div>
+
+      </div><!-- /dc-right -->
+
+    </div><!-- /dc-layout -->
+  </div><!-- /doc-chat-root -->
+
+</div><!-- /apex-modal -->
+
+<!-- Lightbox -->
+<div id="dc-lightbox">
+  <img id="dc-lb-img" src="" alt="">
+  <button type="button" id="dc-lb-close" onclick="closeLightbox()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
+</div>
+
+<!-- Forward modal -->
+<div id="dc-forward-modal">
+  <div class="dc-fwd-box">
+    <div class="dc-fwd-header">
+      <span class="dc-fwd-title">Chuyển tiếp tin nhắn</span>
+      <button type="button" class="dc-icon-btn"
+        onclick="document.getElementById('dc-forward-modal').classList.remove('open')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="dc-fwd-quote">đơn SO-2601/010 đã được phòng kế toán duyệt xong.</div>
+    <div class="dc-fwd-search">
+      <div style="position:relative;">
+        <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" style="width:100%;padding:8px 12px 8px 32px;border:1px solid var(--n-200);border-radius:9px;font-size:13px;outline:none;font-family:'Outfit',system-ui,sans-serif;" placeholder="Tìm hội thoại...">
       </div>
-
-      <!-- 3-column body -->
-      <div class="modal-body with-info" id="dc-body">
-
-        <!-- ══ LEFT: Conversation list ══ -->
-        <div class="convo-pane">
-          <div id="dc-list-screen" class="dc-screen">
-
-            <!-- Toolbar -->
-            <div class="convo-toolbar">
-              <div class="convo-search">
-                <i class="fa fa-search" style="font-size:12px;flex-shrink:0"></i>
-                <input id="dc-conv-search" type="text" placeholder="Tìm hội thoại...">
-              </div>
-              <div class="convo-tabs">
-                <button class="convo-tab active" data-filter="ALL">
-                  <i class="fa fa-layer-group" style="font-size:11px"></i> Tất cả
-                </button>
-                <button class="convo-tab" data-filter="UNREAD">
-                  Chưa đọc <span style="background:var(--primary);color:#fff;border-radius:999px;font-size:10px;font-weight:700;padding:0 5px;line-height:16px">3</span>
-                </button>
-                <button class="convo-tab" data-filter="CHANNEL">
-                  <i class="fa fa-users" style="font-size:11px"></i> Nhóm
-                </button>
-              </div>
-            </div>
-
-            <!-- Conv list -->
-            <div id="dc-conv-list">
-              <div class="convo-list">
-                <div class="convo-section-label">Chứng từ này</div>
-
-                <!-- Conv item active -->
-                <div class="convo-item active" data-conv-id="1">
-                  <div class="convo-avatar-wrap">
-                    <div class="convo-avatar group" style="font-size:11px">
-                      <i class="fa fa-file-invoice"></i>
-                    </div>
-                  </div>
-                  <div class="convo-content">
-                    <div class="convo-row1">
-                      <span class="convo-name">SO-2601/010 — Thảo luận</span>
-                      <span class="convo-time">10:32</span>
-                    </div>
-                    <div class="convo-row2">
-                      <span class="convo-preview"><span class="convo-sender-name">Huy:</span> Anh ơi, khách hàng xác nhận...</span>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Conv item unread -->
-                <div class="convo-item unread" data-conv-id="2">
-                  <div class="convo-avatar-wrap">
-                    <div class="convo-avatar" style="background:hsl(141,55%,45%)">T</div>
-                    <div class="convo-sender-badge" style="background:hsl(188,55%,45%)">N</div>
-                  </div>
-                  <div class="convo-content">
-                    <div class="convo-row1">
-                      <span class="convo-name">Trần Thị Mai</span>
-                      <span class="convo-time">09:15</span>
-                    </div>
-                    <div class="convo-row2">
-                      <span class="convo-preview">Đã duyệt đơn hàng, chờ xuất kho</span>
-                      <div class="convo-meta">
-                        <span class="convo-badge">2</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="convo-section-label" style="margin-top:4px">Khác</div>
-
-                <!-- Conv item normal -->
-                <div class="convo-item" data-conv-id="3">
-                  <div class="convo-avatar-wrap">
-                    <div class="convo-avatar group">KH</div>
-                  </div>
-                  <div class="convo-content">
-                    <div class="convo-row1">
-                      <span class="convo-name">Nhóm Kinh Doanh Q1</span>
-                      <span class="convo-time">Hôm qua</span>
-                    </div>
-                    <div class="convo-row2">
-                      <span class="convo-preview"><span class="convo-sender-name">Long:</span> Meeting lúc 2h chiều nha mọi người</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="convo-item" data-conv-id="4">
-                  <div class="convo-avatar-wrap">
-                    <div class="convo-avatar" style="background:hsl(329,55%,55%)">L</div>
-                    <div class="convo-avatar .presence"></div>
-                  </div>
-                  <div class="convo-content">
-                    <div class="convo-row1">
-                      <span class="convo-name">Nguyễn Văn Long</span>
-                      <span class="convo-time">Hôm qua</span>
-                    </div>
-                    <div class="convo-row2">
-                      <span class="convo-preview">Ok anh, em sẽ gửi báo giá ngay</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="convo-item" data-conv-id="5">
-                  <div class="convo-avatar-wrap">
-                    <div class="convo-avatar" style="background:hsl(47,55%,52%)">P</div>
-                  </div>
-                  <div class="convo-content">
-                    <div class="convo-row1">
-                      <span class="convo-name">Lê Thị Phương</span>
-                      <span class="convo-time">25/06</span>
-                    </div>
-                    <div class="convo-row2">
-                      <span class="convo-preview">Tài liệu kỹ thuật đã upload lên hệ thống</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Action buttons -->
-            <div class="dc-list-actions">
-              <button id="dc-btn-dm" class="btn-ghost">
-                <i class="fa fa-comment" style="font-size:12px"></i> Nhắn tin
-              </button>
-              <button id="dc-btn-group" class="btn-primary">
-                <i class="fa fa-users" style="font-size:12px"></i> Tạo nhóm
-              </button>
-            </div>
-          </div>
+    </div>
+    <div class="dc-fwd-list">
+      <div class="dc-fwd-item selected">
+        <div style="width:34px;height:34px;border-radius:50%;background:hsl(141,55%,45%);display:flex;align-items:center;justify-content:center;color:white;font-size:13px;font-weight:700;flex-shrink:0;">M</div>
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:600;color:var(--n-800);">Trần Thị Mai</div>
+          <div style="font-size:11.5px;color:var(--n-400);">Kế toán</div>
         </div>
-
-        <!-- ══ CENTER: Chat pane ══ -->
-        <div class="chat-pane">
-
-          <!-- Header -->
-          <div class="chat-head" id="dc-chat-head">
-            <div class="chat-head-avatar group" style="font-size:11px">
-              <i class="fa fa-file-invoice"></i>
-            </div>
-            <div class="chat-head-info">
-              <div class="chat-head-title" id="dc-chat-head-title">
-                SO-2601/010 — Thảo luận
-                <span style="background:var(--info-50);color:var(--info);font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;border:1px solid rgba(53,126,235,.15)">Nhóm</span>
-              </div>
-              <div class="chat-head-sub">5 thành viên · 2 đang online</div>
-            </div>
-            <div class="chat-head-actions">
-              <button class="icon-btn" id="dc-btn-search-toggle" title="Tìm trong hội thoại">
-                <i class="fa fa-search" style="font-size:13px"></i>
-              </button>
-              <button class="icon-btn active" id="dc-btn-info" title="Thông tin">
-                <i class="fa fa-info-circle" style="font-size:13px"></i>
-              </button>
-            </div>
-          </div>
-
-          <!-- Search bar (hidden by default) -->
-          <div class="chat-search-bar" id="dc-msg-search-bar" style="display:none">
-            <input type="text" id="dc-msg-search-input" placeholder="Tìm trong hội thoại...">
-          </div>
-
-          <!-- Messages -->
-          <div class="chat-messages" id="dc-messages">
-
-            <div class="chat-day-divider">25 tháng 6, 2026</div>
-
-            <!-- Message - theirs -->
-            <div class="msg-row">
-              <div class="msg-avatar" style="background:hsl(141,55%,45%)">M</div>
-              <div class="msg-col">
-                <div class="msg-meta">
-                  <span class="msg-meta-name">Trần Thị Mai</span>
-                  <span class="msg-meta-role">Kế toán</span>
-                  <span class="msg-meta-time">09:10</span>
-                </div>
-                <div class="msg-bubble">
-                  Chào anh Huy, đơn <span class="doc-tag"><i class="fa fa-file-invoice" style="font-size:10px"></i> SO-2601/010</span> đã được phòng kế toán duyệt xong. Anh kiểm tra lại giá trị cuối cùng giúp em nhé.
-                </div>
-                <div class="msg-hover-actions">
-                  <button class="msg-hover-action" data-reply-id="101" data-reply-body="đơn SO-2601/010 đã được phòng kế toán duyệt xong">
-                    <i class="fa fa-reply" style="font-size:12px"></i>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Message - mine -->
-            <div class="msg-row mine">
-              <div class="msg-avatar" style="background:hsl(188,55%,45%)">H</div>
-              <div class="msg-col">
-                <div class="msg-meta" style="flex-direction:row-reverse">
-                  <span class="msg-meta-name">Nguyễn Quốc Huy</span>
-                  <span class="msg-meta-time">09:18</span>
-                </div>
-                <div class="msg-bubble">
-                  Cảm ơn chị Mai. Tổng giá trị là 245,600,000đ, đã bao gồm VAT 10%. Anh xác nhận đúng rồi ạ.
-                </div>
-                <div class="msg-seen">✓ Đã xem</div>
-                <div class="msg-hover-actions">
-                  <button class="msg-hover-action" data-reply-id="102" data-reply-body="Tổng giá trị là 245,600,000đ">
-                    <i class="fa fa-reply" style="font-size:12px"></i>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Message with reply context -->
-            <div class="msg-row">
-              <div class="msg-avatar" style="background:hsl(329,55%,55%)">L</div>
-              <div class="msg-col">
-                <div class="msg-meta">
-                  <span class="msg-meta-name">Nguyễn Văn Long</span>
-                  <span class="msg-meta-role">Kinh doanh</span>
-                  <span class="msg-meta-time">09:45</span>
-                </div>
-                <div class="msg-reply-context">
-                  <span class="name">Nguyễn Quốc Huy:</span>
-                  <span class="body"> Tổng giá trị là 245,600,000đ, đã bao gồm VAT 10%</span>
-                </div>
-                <div class="msg-bubble">
-                  Khách hàng đã xác nhận số lượng và giá. Mình có thể tiến hành xuất kho được rồi anh ơi.
-                </div>
-                <div class="msg-hover-actions">
-                  <button class="msg-hover-action">
-                    <i class="fa fa-reply" style="font-size:12px"></i>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div class="chat-day-divider">Hôm nay</div>
-
-            <div class="msg-row">
-              <div class="msg-avatar" style="background:hsl(47,55%,52%)">P</div>
-              <div class="msg-col">
-                <div class="msg-meta">
-                  <span class="msg-meta-name">Lê Thị Phương</span>
-                  <span class="msg-meta-role">Xuất nhập kho</span>
-                  <span class="msg-meta-time">08:30</span>
-                </div>
-                <div class="msg-bubble">
-                  Phiếu xuất kho <span class="doc-tag"><i class="fa fa-file" style="font-size:10px"></i> PXK-2601/005</span> đã được tạo. Xe giao hàng lúc 14:00 hôm nay.
-                </div>
-                <div class="msg-hover-actions">
-                  <button class="msg-hover-action">
-                    <i class="fa fa-reply" style="font-size:12px"></i>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Mine latest -->
-            <div class="msg-row mine">
-              <div class="msg-avatar" style="background:hsl(188,55%,45%)">H</div>
-              <div class="msg-col">
-                <div class="msg-meta" style="flex-direction:row-reverse">
-                  <span class="msg-meta-name">Nguyễn Quốc Huy</span>
-                  <span class="msg-meta-time">10:32</span>
-                </div>
-                <div class="msg-bubble">
-                  Anh ơi, khách hàng xác nhận đã nhận hàng. Chị Phương cập nhật trạng thái giao thành công giúp anh nhé 🙏
-                </div>
-                <div class="msg-hover-actions">
-                  <button class="msg-hover-action">
-                    <i class="fa fa-reply" style="font-size:12px"></i>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-          </div>
-
-          <!-- Typing indicator -->
-          <div class="typing-row" id="dc-typing" style="display:none">
-            <div class="msg-avatar hidden" style="width:30px;height:30px"></div>
-            <div class="typing-bubble">
-              <div class="typing-dot"></div>
-              <div class="typing-dot"></div>
-              <div class="typing-dot"></div>
-              <span class="typing-text" id="dc-typing-text">Phương đang nhập...</span>
-            </div>
-          </div>
-
-          <!-- Composer -->
-          <div class="composer-wrap" id="dc-compose-area">
-            <!-- Reply banner (hidden) -->
-            <div class="composer-reply-banner" id="dc-reply-banner" style="display:none">
-              <i class="fa fa-reply" style="font-size:11px;color:var(--primary)"></i>
-              <span class="who">Trả lời Trần Thị Mai</span>
-              <span class="preview" id="dc-reply-preview">đơn SO-2601/010 đã được phòng kế toán duyệt xong.</span>
-              <button class="icon-btn" id="dc-reply-cancel" style="width:24px;height:24px">
-                <i class="fa fa-times" style="font-size:12px"></i>
-              </button>
-            </div>
-
-            <div class="composer" id="dc-composer">
-              <textarea
-                class="composer-input"
-                id="dc-msg-input"
-                placeholder="Nhắn tin trong SO-2601/010 — Thảo luận (Ctrl+Enter để gửi)"
-                rows="1"
-              ></textarea>
-              <div class="composer-bottom">
-                <button class="icon-btn" title="Đính kèm file">
-                  <i class="fa fa-paperclip" style="font-size:13px"></i>
-                </button>
-                <button class="icon-btn" title="Emoji">
-                  <i class="fa fa-face-smile" style="font-size:13px"></i>
-                </button>
-                <button class="composer-send" id="dc-btn-send">
-                  <i class="fa fa-paper-plane" style="font-size:12px"></i> Gửi
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ══ RIGHT: Info pane ══ -->
-        <div class="info-pane" id="dc-info-pane">
-
-          <!-- Doc summary -->
-          <div class="info-section">
-            <div class="info-section-title">
-              <i class="fa fa-file-invoice"></i> Chứng từ
-            </div>
-            <div class="doc-summary-card">
-              <div class="doc-summary-no">
-                <span class="label" id="dc-doc-no">SO-2601/010</span>
-                <span class="status" id="dc-doc-status">Đang giao</span>
-              </div>
-              <div class="doc-summary-type" id="dc-doc-label">Đơn hàng bán · Công ty TNHH Thương mại Phú Thịnh</div>
-              <div class="doc-summary-rows">
-                <div class="doc-summary-row">
-                  <span class="k">Ngày đặt hàng</span>
-                  <span class="v">26/01/2026</span>
-                </div>
-                <div class="doc-summary-row">
-                  <span class="k">Ngày giao dự kiến</span>
-                  <span class="v">28/01/2026</span>
-                </div>
-                <div class="doc-summary-row">
-                  <span class="k">Số lượng sản phẩm</span>
-                  <span class="v">12 mặt hàng</span>
-                </div>
-                <hr class="doc-summary-divider">
-                <div class="doc-summary-row">
-                  <span class="k">Tổng tiền</span>
-                  <span class="v money" id="dc-doc-total">245.600.000 đ</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Quick actions -->
-          <div class="info-section">
-            <div class="info-section-title">
-              <i class="fa fa-bolt"></i> Thao tác nhanh
-            </div>
-            <div class="quick-action">
-              <div class="quick-action-icon"><i class="fa fa-eye" style="font-size:13px"></i></div>
-              <span>Xem chi tiết đơn hàng</span>
-            </div>
-            <div class="quick-action">
-              <div class="quick-action-icon"><i class="fa fa-print" style="font-size:13px"></i></div>
-              <span>In phiếu xuất kho</span>
-            </div>
-            <div class="quick-action">
-              <div class="quick-action-icon"><i class="fa fa-check-circle" style="font-size:13px"></i></div>
-              <span>Xác nhận giao hàng</span>
-            </div>
-          </div>
-
-          <!-- Members -->
-          <div class="info-section">
-            <div class="info-section-title">
-              <i class="fa fa-users"></i> Thành viên
-              <span class="count">5</span>
-              <span class="action">Thêm</span>
-            </div>
-
-            <div class="member-row">
-              <div class="member-avatar" style="background:hsl(188,55%,45%)">
-                H
-                <div class="presence"></div>
-              </div>
-              <div class="member-info">
-                <div class="member-name">Nguyễn Quốc Huy</div>
-                <div class="member-role">Kinh doanh · Bạn</div>
-              </div>
-              <span class="member-badge owner">Chủ</span>
-            </div>
-
-            <div class="member-row">
-              <div class="member-avatar" style="background:hsl(141,55%,45%)">
-                M
-                <div class="presence"></div>
-              </div>
-              <div class="member-info">
-                <div class="member-name">Trần Thị Mai</div>
-                <div class="member-role">Kế toán</div>
-              </div>
-            </div>
-
-            <div class="member-row">
-              <div class="member-avatar" style="background:hsl(329,55%,55%)">
-                L
-                <div class="presence away"></div>
-              </div>
-              <div class="member-info">
-                <div class="member-name">Nguyễn Văn Long</div>
-                <div class="member-role">Kinh doanh</div>
-              </div>
-            </div>
-
-            <div class="member-row">
-              <div class="member-avatar" style="background:hsl(47,55%,52%)">
-                P
-                <div class="presence offline"></div>
-              </div>
-              <div class="member-info">
-                <div class="member-name">Lê Thị Phương</div>
-                <div class="member-role">Xuất nhập kho</div>
-              </div>
-            </div>
-
-            <div class="member-row">
-              <div class="member-avatar" style="background:hsl(94,45%,45%)">
-                K
-                <div class="presence offline"></div>
-              </div>
-              <div class="member-info">
-                <div class="member-name">Phạm Văn Khoa</div>
-                <div class="member-role">Giám đốc kinh doanh</div>
-              </div>
-              <span class="member-badge admin">Admin</span>
-            </div>
-          </div>
-
-          <!-- Related docs -->
-          <div class="info-section">
-            <div class="info-section-title">
-              <i class="fa fa-link"></i> Chứng từ liên quan
-              <span class="count">2</span>
-            </div>
-            <div class="related-doc">
-              <div class="no"><i class="fa fa-file-invoice" style="font-size:11px;color:var(--text-3);margin-right:5px"></i>PXK-2601/005</div>
-              <div class="meta">Phiếu xuất kho · 26/01/2026 · Đang giao</div>
-            </div>
-            <div class="related-doc">
-              <div class="no"><i class="fa fa-file-invoice-dollar" style="font-size:11px;color:var(--text-3);margin-right:5px"></i>HD-2601/003</div>
-              <div class="meta">Hóa đơn VAT · 26/01/2026 · Chờ thanh toán</div>
-            </div>
-          </div>
-
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--c-main)" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="dc-fwd-item">
+        <div style="width:34px;height:34px;border-radius:10px;background:var(--c-main);display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700;flex-shrink:0;">KD</div>
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:600;color:var(--n-800);">Nhóm Kinh Doanh Q1</div>
+          <div style="font-size:11.5px;color:var(--n-400);">5 thành viên</div>
         </div>
       </div>
+    </div>
+    <div class="dc-fwd-footer">
+      <button type="button" class="dc-fwd-btn-cancel"
+        onclick="document.getElementById('dc-forward-modal').classList.remove('open')">Hủy</button>
+      <button type="button" class="dc-fwd-btn-send enabled">Gửi</button>
     </div>
   </div>
 </div>
 
-<!-- Switcher tabs -->
+<!-- ── Preview tabs (preview-only, not in APEX) ── -->
 <div class="preview-tabs">
-  <button class="preview-tab active" onclick="switchView('chat')">Hội thoại</button>
-  <button class="preview-tab" onclick="switchView('compose-dm')">Nhắn tin mới</button>
-  <button class="preview-tab" onclick="switchView('compose-group')">Tạo nhóm</button>
-  <button class="preview-tab" onclick="switchView('typing')">Typing</button>
-  <button class="preview-tab" onclick="switchView('reply')">Reply</button>
+  <button class="preview-tab active" onclick="setPreview('chat',this)">Chat</button>
+  <button class="preview-tab" onclick="setPreview('new-dm',this)">Tạo DM</button>
+  <button class="preview-tab" onclick="setPreview('new-group',this)">Tạo nhóm</button>
+  <button class="preview-tab" onclick="setPreview('reply',this)">Trả lời</button>
+  <button class="preview-tab" onclick="setPreview('file',this)">File preview</button>
+  <button class="preview-tab" onclick="setPreview('typing',this)">Typing</button>
+  <button class="preview-tab" onclick="setPreview('forward',this)">Chuyển tiếp</button>
+  <button class="preview-tab" onclick="setPreview('no-rp',this)">Ẩn panel phải</button>
 </div>
-
-<!-- Compose screen (hidden initially, shown via switcher) -->
-<template id="tpl-compose">
-  <div id="dc-compose-screen" class="dc-screen dc-compose" style="display:flex">
-    <div class="dc-compose-head">
-      <button class="icon-btn" id="dc-compose-back">
-        <i class="fa fa-arrow-left" style="font-size:13px"></i>
-      </button>
-      <span class="dc-compose-title" id="dc-compose-title">Nhắn tin mới</span>
-      <button class="icon-btn" id="dc-compose-close">
-        <i class="fa fa-times" style="font-size:13px"></i>
-      </button>
-    </div>
-    <div class="dc-compose-body">
-      <!-- Type tabs -->
-      <div class="dc-type-tabs">
-        <label class="dc-type-tab active">
-          <input type="radio" name="dc-conv-type" value="DM" checked>
-          <i class="fa fa-comment"></i> Nhắn tin
-        </label>
-        <label class="dc-type-tab">
-          <input type="radio" name="dc-conv-type" value="CHANNEL">
-          <i class="fa fa-users"></i> Tạo nhóm
-        </label>
-      </div>
-
-      <!-- Doc context ref -->
-      <div class="dc-create-context">
-        <i class="fa fa-file-invoice" style="font-size:11px"></i>
-        Liên quan: <strong id="dc-create-doc-ref">SO-2601/010</strong>
-      </div>
-
-      <!-- Group name (hidden in DM) -->
-      <div class="form-field" id="dc-create-name-wrap" style="display:none">
-        <label class="form-label">Tên nhóm</label>
-        <input class="form-input" type="text" id="dc-create-name" placeholder="Tên nhóm hội thoại...">
-      </div>
-
-      <!-- Search contacts -->
-      <div>
-        <div class="convo-search" style="margin-bottom:8px">
-          <i class="fa fa-search" style="font-size:12px;flex-shrink:0"></i>
-          <input type="text" id="dc-contact-search" placeholder="Tìm nhân viên...">
-        </div>
-
-        <!-- Selected chips -->
-        <div class="member-pick" id="dc-selected-chips" style="margin-bottom:10px">
-          <span style="color:var(--text-4);font-size:13px;padding:4px">Chưa chọn thành viên nào</span>
-        </div>
-
-        <!-- Member list -->
-        <div class="member-suggest" id="dc-member-suggest-list">
-          <div class="dc-dept-h">Kinh doanh <span class="ct">4</span></div>
-
-          <div class="member-suggest-item selected" data-aus-id="12" data-name="Trần Thị Mai" data-hue="141" data-dept="Kế toán">
-            <div class="member-avatar" style="background:hsl(141,55%,45%);width:32px;height:32px;font-size:12px">M</div>
-            <div class="member-info"><div class="member-name">Trần Thị Mai</div><div class="member-role">Kế toán</div></div>
-            <div class="dc-checkbox"></div>
-          </div>
-
-          <div class="member-suggest-item" data-aus-id="15" data-name="Nguyễn Văn Long" data-hue="329" data-dept="Kinh doanh">
-            <div class="member-avatar" style="background:hsl(329,55%,55%);width:32px;height:32px;font-size:12px">L</div>
-            <div class="member-info"><div class="member-name">Nguyễn Văn Long</div><div class="member-role">Kinh doanh</div></div>
-            <div class="dc-checkbox"></div>
-          </div>
-
-          <div class="member-suggest-item" data-aus-id="18" data-name="Lê Thị Phương" data-hue="47" data-dept="Xuất nhập kho">
-            <div class="member-avatar" style="background:hsl(47,55%,52%);width:32px;height:32px;font-size:12px">P</div>
-            <div class="member-info"><div class="member-name">Lê Thị Phương</div><div class="member-role">Xuất nhập kho</div></div>
-            <div class="dc-checkbox"></div>
-          </div>
-
-          <div class="dc-dept-h">Ban Giám đốc <span class="ct">2</span></div>
-
-          <div class="member-suggest-item" data-aus-id="5" data-name="Phạm Văn Khoa" data-hue="94" data-dept="Ban Giám đốc">
-            <div class="member-avatar" style="background:hsl(94,45%,45%);width:32px;height:32px;font-size:12px">K</div>
-            <div class="member-info"><div class="member-name">Phạm Văn Khoa</div><div class="member-role">Giám đốc kinh doanh</div></div>
-            <div class="dc-checkbox"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="dc-compose-foot">
-      <button class="btn-ghost" id="dc-create-cancel">Hủy</button>
-      <button class="btn-primary" id="dc-create-submit">
-        <i class="fa fa-paper-plane" style="font-size:12px"></i>
-        Bắt đầu nhắn tin
-      </button>
-    </div>
-  </div>
-</template>
 
 <script>
-  // ── Minimal preview interactivity ──
-  function switchView(view) {
-    document.querySelectorAll('.preview-tab').forEach((t,i) => {
-      t.classList.toggle('active', ['chat','compose-dm','compose-group','typing','reply'][i] === view);
-    });
+// ══════════════════════════════════════════════════════
+//  Preview-only implementations of window.dcOn* handlers
+//  In APEX these come from doc-chat-page.fgvd.js (IIFE)
+// ══════════════════════════════════════════════════════
 
-    const listScreen    = document.getElementById('dc-list-screen');
-    const typingRow     = document.getElementById('dc-typing');
-    const replyBanner   = document.getElementById('dc-reply-banner');
-    const composeArea   = document.getElementById('dc-compose-area');
+// ── Slider ──────────────────────────────────────────
+var LP_W = 268;
+window.lpGoTo = function(n) {
+  var track = document.getElementById('lp-track');
+  if (track) track.style.transform = 'translateX(-' + (n * LP_W) + 'px)';
+};
 
-    // Reset
-    typingRow.style.display  = 'none';
-    replyBanner.style.display = 'none';
+// ── Conv list ────────────────────────────────────────
+window.dcOnConvClick = function(el, ev) {
+  document.querySelectorAll('.dc-conv-item').forEach(function(i) {
+    i.classList.remove('dc-conv-active');
+  });
+  el.closest('.dc-conv-item').classList.add('dc-conv-active');
+  // Update header name
+  var name = el.closest('.dc-conv-item').querySelector('.dc-conv-name').textContent;
+  var hn = document.querySelector('.dc-header-name');
+  if (hn) hn.textContent = name;
+};
 
-    // Remove existing compose screen
-    const existing = document.getElementById('dc-compose-screen');
-    if (existing) existing.remove();
+window.dcOnFilter = function(el, ev) {
+  document.querySelectorAll('.dc-filter-tab').forEach(function(t) { t.classList.remove('active'); });
+  el.classList.add('active');
+};
 
-    if (view === 'chat') {
-      listScreen.style.display = 'flex';
-    } else if (view === 'compose-dm' || view === 'compose-group') {
-      listScreen.style.display = 'none';
-      const clone = document.getElementById('tpl-compose').content.cloneNode(true);
-      const convPane = document.querySelector('.convo-pane');
-      convPane.appendChild(clone);
+window.dcOnConvSearch = function(el, ev) {};
 
-      if (view === 'compose-group') {
-        document.getElementById('dc-compose-title').textContent = 'Tạo nhóm mới';
-        document.getElementById('dc-create-name-wrap').style.display = 'flex';
-        document.getElementById('dc-create-submit').innerHTML = '<i class="fa fa-users" style="font-size:12px"></i> Tạo nhóm';
-        // Show chips demo
-        document.getElementById('dc-selected-chips').innerHTML =
-          '<span class="member-chip"><span class="member-chip-avatar" style="background:hsl(141,55%,45%)">M</span>Mai<span class="x" style="color:var(--text-3)">×</span></span>';
-        document.querySelector('.member-suggest-item.selected .dc-checkbox').style.cssText =
-          'background:var(--primary);border-color:var(--primary)';
-        document.querySelector('.member-suggest-item.selected .dc-checkbox').textContent = '✓';
-      }
+// ── Search toggle ─────────────────────────────────────
+window.dcOnSearchToggle = function(el, ev) {
+  var bar = document.getElementById('dc-msg-search-bar');
+  if (!bar) return;
+  var visible = bar.style.display !== 'none' && bar.style.display !== '';
+  bar.style.display = visible ? 'none' : '';
+  if (!visible) document.getElementById('dc-msg-search-input').focus();
+};
 
-      // Back/close buttons
-      document.getElementById('dc-compose-back').onclick =
-      document.getElementById('dc-compose-close').onclick =
-      document.getElementById('dc-create-cancel').onclick = () => switchView('chat');
-    } else if (view === 'typing') {
-      listScreen.style.display = 'flex';
-      typingRow.style.display = 'flex';
-    } else if (view === 'reply') {
-      listScreen.style.display = 'flex';
-      replyBanner.style.display = 'flex';
-      document.getElementById('dc-composer').classList.add('with-reply');
-    }
+window.dcOnMsgSearch = function(el, ev) {};
 
-    if (view !== 'reply') {
-      document.getElementById('dc-composer').classList.remove('with-reply');
-    }
+// ── Right panel toggle ────────────────────────────────
+window.dcOnToggleInfo = function(el, ev) {
+  var rp = document.getElementById('dc-right-panel');
+  rp.classList.toggle('collapsed');
+  el.style.color = rp.classList.contains('collapsed') ? '' : 'var(--c-main)';
+};
+
+// ── Reply ─────────────────────────────────────────────
+window.dcOnReplyStart = function(el, ev) {
+  if (ev) ev.stopPropagation();
+  var $group  = el.closest('.message-group');
+  var isMe    = $group.classList.contains('msg-me-wrap');
+  var sender  = isMe ? 'Tôi' : ($group.querySelector('.msg-sender') || {textContent:''}).textContent;
+  var body    = ($group.querySelector('.msg-text, .msg-me-bubble') || {textContent:''}).textContent.trim();
+  var rpSender = document.querySelector('#dc-reply-preview .dc-rp-sender');
+  var rpText   = document.querySelector('#dc-reply-preview .dc-rp-text');
+  if (rpSender) rpSender.textContent = sender;
+  if (rpText)   rpText.textContent   = body.substring(0, 80);
+  document.getElementById('dc-reply-preview').classList.add('rp-active');
+  document.getElementById('dc-chat-input').focus();
+};
+
+window.dcOnReplyCancel = function(el, ev) {
+  document.getElementById('dc-reply-preview').classList.remove('rp-active');
+};
+
+// ── Send ──────────────────────────────────────────────
+window.dcOnSend = function(el, ev) {
+  var input = document.getElementById('dc-chat-input');
+  if (input) input.textContent = '';
+  document.getElementById('dc-reply-preview').classList.remove('rp-active');
+};
+
+window.dcOnMsgKeydown = function(el, ev) {
+  if (ev && ev.key === 'Enter' && !ev.shiftKey) {
+    ev.preventDefault();
+    window.dcOnSend(el, ev);
   }
+};
 
-  // Textarea auto-resize
-  document.getElementById('dc-msg-input').addEventListener('input', function() {
-    this.style.height = 'auto';
-    this.style.height = Math.min(this.scrollHeight, 140) + 'px';
+window.dcOnMsgAutosize = function(el, ev) {};
+
+// ── Slider navigation ─────────────────────────────────
+window.dcOnOpenDM = function(el, ev) { window.lpGoTo(1); };
+window.dcOnCloseCompose = function(el, ev) { window.lpGoTo(0); };
+window.dcOnGroupBack = function(el, ev) { window.lpGoTo(1); };
+window.dcOnGroupInfoBack = function(el, ev) { window.lpGoTo(2); };
+window.dcOnGoToGroupMembers = function(el, ev) { window.lpGoTo(2); };
+window.dcOnGroupNext = function(el, ev) { window.lpGoTo(3); };
+
+// ── Member toggle ─────────────────────────────────────
+window.dcOnMemberToggle = function(el, ev) {
+  el.closest('.gm-row').classList.toggle('gm-sel');
+  var count = document.querySelectorAll('.gm-row.gm-sel').length;
+  var next = document.querySelector('.lp-gm-next');
+  if (next) next.classList.toggle('lp-gm-ok', count > 0);
+  var cnt = document.querySelector('.lp-gm-count');
+  if (cnt) cnt.textContent = count > 0 ? 'Đã chọn ' + count : 'Chọn thành viên';
+};
+
+window.dcOnChipRemove = function(el, ev) {
+  if (ev) ev.stopPropagation();
+  el.closest('.lp-gc').remove();
+};
+
+window.dcOnContactSearch = function(el, ev) {
+  var q    = el.value.toLowerCase().trim();
+  var inS2 = !!el.closest('#lp-s2');
+  var rows = document.querySelectorAll(inS2 ? '#lp-s2-list .lp-cr' : '#lp-s3-list .gm-row');
+  rows.forEach(function(r) {
+    var name = (r.dataset.name || '').toLowerCase();
+    var dept = (r.dataset.dept || '').toLowerCase();
+    r.style.display = (!q || name.indexOf(q) !== -1 || dept.indexOf(q) !== -1) ? '' : 'none';
   });
-
-  // Conv item click
-  document.querySelectorAll('.convo-item').forEach(item => {
-    item.addEventListener('click', function() {
-      document.querySelectorAll('.convo-item').forEach(i => i.classList.remove('active'));
-      this.classList.add('active');
-      this.classList.remove('unread');
-      this.querySelector('.convo-badge') && this.querySelector('.convo-badge').remove();
-    });
+  (inS2 ? document.querySelectorAll('#lp-s2-list .lp-alpha')
+        : document.querySelectorAll('#lp-s3-list .lp-alpha')).forEach(function(h) {
+    var any = false, n = h.nextElementSibling;
+    while (n && !n.classList.contains('lp-alpha')) {
+      if (n.style.display !== 'none') { any = true; break; }
+      n = n.nextElementSibling;
+    }
+    h.style.display = any ? '' : 'none';
   });
+};
 
-  // Reply cancel
-  document.getElementById('dc-reply-cancel').addEventListener('click', () => {
-    document.getElementById('dc-reply-banner').style.display = 'none';
-    document.getElementById('dc-composer').classList.remove('with-reply');
-  });
+// ── Group avatar preview ──────────────────────────────
+window.dcOnGroupNameInput = function(el, ev) { updateGroupAvatar(); };
 
-  // Info toggle
-  document.getElementById('dc-btn-info').addEventListener('click', function() {
-    const body = document.getElementById('dc-body');
-    const pane = document.getElementById('dc-info-pane');
-    const active = body.classList.toggle('with-info');
-    pane.style.display = active ? '' : 'none';
-    this.classList.toggle('active', active);
-  });
+function updateGroupAvatar() {
+  var name = (document.getElementById('lp-gname') || {value:''}).value.trim();
+  var av   = document.getElementById('lp-gi-av');
+  var ini  = document.getElementById('lp-av-initials');
+  var btn  = document.getElementById('lp-create-btn');
+  var icon = document.getElementById('lp-av-empty-icon');
+  if (!av) return;
+  if (name) {
+    if (ini) { ini.textContent = name.substring(0,2).toUpperCase(); ini.style.display = 'flex'; }
+    av.style.background = 'var(--c-main)';
+    av.classList.remove('lp-av-empty');
+    av.classList.add('lp-av-filled');
+    if (icon) icon.style.display = 'none';
+    if (btn) btn.disabled = false;
+  } else {
+    if (ini) ini.style.display = 'none';
+    av.style.background = '';
+    av.classList.add('lp-av-empty');
+    av.classList.remove('lp-av-filled');
+    if (icon) icon.style.display = '';
+    if (btn) btn.disabled = true;
+  }
+}
 
-  // Search toggle
-  document.getElementById('dc-btn-search-toggle').addEventListener('click', function() {
-    const bar = document.getElementById('dc-msg-search-bar');
-    const visible = bar.style.display !== 'none';
-    bar.style.display = visible ? 'none' : 'block';
-    if (!visible) document.getElementById('dc-msg-search-input').focus();
-    this.classList.toggle('active', !visible);
-  });
+window.dcOnDMContactSelect  = function(el, ev) { window.lpGoTo(0); };
+window.dcOnSubmitCreate     = function(el, ev) { window.lpGoTo(0); };
 
-  // Scroll to bottom on load
-  const msgs = document.getElementById('dc-messages');
-  msgs.scrollTop = msgs.scrollHeight;
+// ── Right panel section collapse ──────────────────────
+function toggleSection(header) {
+  var body  = header.nextElementSibling;
+  var arrow = header.querySelector('svg');
+  body.classList.toggle('collapsed');
+  arrow.style.transform = body.classList.contains('collapsed') ? 'rotate(180deg)' : '';
+}
+
+// ── Emoji picker ──────────────────────────────────────
+var _emojiOpen = false;
+function toggleEmojiPicker() {
+  _emojiOpen = !_emojiOpen;
+  document.getElementById('dc-emoji-picker').classList.toggle('open', _emojiOpen);
+}
+document.addEventListener('click', function(e) {
+  if (_emojiOpen && !e.target.closest('.dc-emoji-wrap')) {
+    _emojiOpen = false;
+    document.getElementById('dc-emoji-picker').classList.remove('open');
+  }
+});
+
+// ── Lightbox ──────────────────────────────────────────
+function openLightbox(src) {
+  document.getElementById('dc-lb-img').src = src;
+  document.getElementById('dc-lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('dc-lightbox').classList.remove('open');
+}
+document.getElementById('dc-lightbox').addEventListener('click', function(e) {
+  if (e.target === this) closeLightbox();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeLightbox();
+});
+
+// ── Preview tab switching ─────────────────────────────
+function setPreview(state, btn) {
+  // Reset all states
+  document.getElementById('dc-reply-preview').classList.remove('rp-active');
+  document.getElementById('dc-file-preview-bar').classList.remove('has-files');
+  document.getElementById('dc-forward-modal').classList.remove('open');
+  document.getElementById('dc-right-panel').classList.remove('collapsed');
+  document.getElementById('dc-typing-row').style.display = 'none';
+  window.lpGoTo(0);
+
+  document.querySelectorAll('.preview-tab').forEach(function(t) { t.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+
+  switch(state) {
+    case 'chat':    break;
+    case 'new-dm':  window.lpGoTo(1); break;
+    case 'new-group': window.lpGoTo(3); break;
+    case 'reply':   document.getElementById('dc-reply-preview').classList.add('rp-active'); break;
+    case 'file':    document.getElementById('dc-file-preview-bar').classList.add('has-files'); break;
+    case 'typing':  document.getElementById('dc-typing-row').style.display = 'flex'; break;
+    case 'forward': document.getElementById('dc-forward-modal').classList.add('open'); break;
+    case 'no-rp':   document.getElementById('dc-right-panel').classList.add('collapsed'); break;
+  }
+}
+
+// ── Jump button — show for demo ───────────────────────
+document.getElementById('dc-jump-btn').classList.add('visible');
+document.getElementById('dc-jump-badge').classList.add('show');
 </script>
+
 </body>
 </html>
