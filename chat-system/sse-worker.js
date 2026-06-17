@@ -117,6 +117,7 @@ function requestTokenFromTab() {
 function onTokenReceived(newToken) {
     _tokenRequested = false;
     if (!newToken || newToken.indexOf('.') < 0) {
+        broadcast({ type: 'sse_error', reason: 'token_invalid' });
         setTimeout(requestTokenFromTab, 3000);
         return;
     }
@@ -161,6 +162,7 @@ function connectSSE() {
         _es.onerror = function () {
             _es.close(); _es = null;
             _token = null; // buộc mint token mới khi reconnect
+            broadcast({ type: 'sse_error', reason: 'connection_error', sseUrl: SSE_URL, backoffMs: _backoff });
             scheduleReconnect();
         };
     });

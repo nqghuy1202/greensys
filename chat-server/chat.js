@@ -61,20 +61,26 @@ async function deliverToConv(convId, payload, excludeAusId) {
 // Sidebar: danh sách conversation của user, sort theo tin nhắn mới nhất
 router.get('/conversations/:aus_id', async (req, res) => {
   const ausId = Number(req.params.aus_id);
+  // scope=all → trả TẤT CẢ hội thoại (gồm cả gắn chứng từ) cho modal hợp nhất.
+  // Mặc định (không param) → giữ nguyên doc_type IS NULL (messenger cũ, backward-compat).
+  const docFilter = req.query.scope === 'all' ? '1 = 1' : 'c.doc_type IS NULL';
   try {
     const rows = await withConn(async conn => {
       const r = await conn.execute(
         `SELECT
            c.conv_id,
            c.conv_type,
+           c.doc_type,
+           c.doc_no,
            c.last_msg_preview,
            c.last_msg_date,
            c.pinned_msg_id,
            p.is_admin,
            p.last_read_msg_id,
-           -- Tên hiển thị: CHANNEL dùng name, DM dùng tên người kia
-           CASE c.conv_type
-             WHEN 'CHANNEL' THEN c.name
+           -- Tên hiển thị: CHANNEL (hoặc DOC nhóm >2 người) dùng name, còn lại dùng tên người kia
+           CASE
+             WHEN c.conv_type = 'CHANNEL' THEN c.name
+             WHEN c.conv_type = 'DOC' AND (SELECT COUNT(*) FROM CHAT_PARTICIPANTS p3 WHERE p3.conv_id = c.conv_id) > 2 THEN c.name
              ELSE (SELECT NVL(e2.full_name, 'Unknown')
                    FROM   CHAT_PARTICIPANTS p2
                    JOIN   APP_USERS  u2 ON u2.aus_id = p2.aus_id
@@ -82,12 +88,17 @@ router.get('/conversations/:aus_id', async (req, res) => {
                    WHERE  p2.conv_id = c.conv_id AND p2.aus_id != :aus_id
                    FETCH FIRST 1 ROW ONLY)
            END AS display_name,
-           -- aus_id của người kia (chỉ có ý nghĩa với DM)
-           CASE c.conv_type
-             WHEN 'DM' THEN (SELECT p2.aus_id
+           -- aus_id của người kia (DM, hoặc DOC 1-1)
+           CASE
+             WHEN c.conv_type = 'DM' THEN (SELECT p2.aus_id
                              FROM   CHAT_PARTICIPANTS p2
                              WHERE  p2.conv_id = c.conv_id AND p2.aus_id != :aus_id
                              FETCH FIRST 1 ROW ONLY)
+             WHEN c.conv_type = 'DOC' AND (SELECT COUNT(*) FROM CHAT_PARTICIPANTS p3 WHERE p3.conv_id = c.conv_id) <= 2
+               THEN (SELECT p2.aus_id
+                     FROM   CHAT_PARTICIPANTS p2
+                     WHERE  p2.conv_id = c.conv_id AND p2.aus_id != :aus_id
+                     FETCH FIRST 1 ROW ONLY)
            END AS dm_partner_aus_id,
            (SELECT COUNT(*)
             FROM   CHAT_MESSENGERS m
@@ -102,7 +113,7 @@ router.get('/conversations/:aus_id', async (req, res) => {
          FROM CHAT_CONVERSATIONS c
          JOIN CHAT_PARTICIPANTS   p
            ON p.conv_id = c.conv_id AND p.aus_id = :aus_id
-         WHERE c.doc_type IS NULL
+         WHERE ${docFilter}
          ORDER BY c.last_msg_date DESC NULLS LAST`,
         { aus_id: ausId },
         { outFormat: oracledb.OUT_FORMAT_OBJECT }
@@ -112,6 +123,60 @@ router.get('/conversations/:aus_id', async (req, res) => {
     res.json({ conversations: normalize(rows) });
   } catch (err) {
     console.error('[Chat] GET /conversations:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/chat/unread-summary/:aus_id ────────────────────────────────────
+// Tổng hợp unread cho badge header + số đếm banner cross-doc (khởi tạo / sau reconnect).
+// Trả: { total, by_conv:[{conv_id,unread,doc_type,doc_no}], by_doc:[{doc_type,doc_no,unread}] }
+router.get('/unread-summary/:aus_id', async (req, res) => {
+  const ausId = Number(req.params.aus_id);
+  try {
+    const rows = await withConn(async conn => {
+      const r = await conn.execute(
+        `SELECT c.conv_id, c.doc_type, c.doc_no,
+                (SELECT COUNT(*)
+                 FROM   CHAT_MESSENGERS m
+                 WHERE  m.conv_id     = c.conv_id
+                   AND  m.delete_date IS NULL
+                   AND  m.msg_id      > NVL(p.last_read_msg_id, 0)
+                ) AS unread_count
+         FROM   CHAT_CONVERSATIONS c
+         JOIN   CHAT_PARTICIPANTS  p
+           ON   p.conv_id = c.conv_id AND p.aus_id = :aus_id`,
+        { aus_id: ausId },
+        { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+      return r.rows;
+    });
+
+    let total = 0;
+    const by_conv = [];
+    const docMap = new Map();   // `${doc_type}|${doc_no}` → unread
+    for (const row of rows) {
+      const unread = Number(row.UNREAD_COUNT) || 0;
+      if (unread <= 0) continue;
+      total += unread;
+      by_conv.push({
+        conv_id:  row.CONV_ID,
+        unread,
+        doc_type: row.DOC_TYPE || null,
+        doc_no:   row.DOC_NO   || null,
+      });
+      if (row.DOC_NO) {
+        const key = `${row.DOC_TYPE}|${row.DOC_NO}`;
+        docMap.set(key, (docMap.get(key) || 0) + unread);
+      }
+    }
+    const by_doc = [...docMap.entries()].map(([key, unread]) => {
+      const [doc_type, doc_no] = key.split('|');
+      return { doc_type, doc_no, unread };
+    });
+
+    res.json({ total, by_conv, by_doc });
+  } catch (err) {
+    console.error('[Chat] GET /unread-summary:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -138,8 +203,9 @@ router.get('/doc-conversations', async (req, res) => {
            c.pinned_msg_id,
            p.is_admin,
            p.last_read_msg_id,
-           CASE c.conv_type
-             WHEN 'CHANNEL' THEN c.name
+           CASE
+             WHEN c.conv_type = 'CHANNEL' THEN c.name
+             WHEN c.conv_type = 'DOC' AND (SELECT COUNT(*) FROM CHAT_PARTICIPANTS p3 WHERE p3.conv_id = c.conv_id) > 2 THEN c.name
              ELSE (SELECT NVL(e2.full_name, 'Unknown')
                    FROM   CHAT_PARTICIPANTS p2
                    JOIN   APP_USERS  u2 ON u2.aus_id = p2.aus_id
@@ -147,11 +213,16 @@ router.get('/doc-conversations', async (req, res) => {
                    WHERE  p2.conv_id = c.conv_id AND p2.aus_id != :aus_id
                    FETCH FIRST 1 ROW ONLY)
            END AS display_name,
-           CASE c.conv_type
-             WHEN 'DM' THEN (SELECT p2.aus_id
+           CASE
+             WHEN c.conv_type = 'DM' THEN (SELECT p2.aus_id
                              FROM   CHAT_PARTICIPANTS p2
                              WHERE  p2.conv_id = c.conv_id AND p2.aus_id != :aus_id
                              FETCH FIRST 1 ROW ONLY)
+             WHEN c.conv_type = 'DOC' AND (SELECT COUNT(*) FROM CHAT_PARTICIPANTS p3 WHERE p3.conv_id = c.conv_id) <= 2
+               THEN (SELECT p2.aus_id
+                     FROM   CHAT_PARTICIPANTS p2
+                     WHERE  p2.conv_id = c.conv_id AND p2.aus_id != :aus_id
+                     FETCH FIRST 1 ROW ONLY)
            END AS dm_partner_aus_id,
            (SELECT COUNT(*)
             FROM   CHAT_MESSENGERS m
@@ -239,16 +310,18 @@ router.get('/messages/:conv_id', async (req, res) => {
 // Gửi tin nhắn mới
 // Body: { conv_id, aus_id, body, reply_to_msg_id? }
 router.post('/send', async (req, res) => {
-  const { conv_id, aus_id, partner_aus_id, username, from_name, body, reply_to_msg_id } = req.body;
+  const { conv_id, aus_id, partner_aus_id, username, from_name, body, reply_to_msg_id, is_file } = req.body;
 
-  if (!conv_id || !aus_id || !String(body || '').trim()) {
+  // Tin nhắn kèm file (is_file=true) cho phép body rỗng - file mới là nội dung chính,
+  // caption chỉ là phần thêm. Tin nhắn thường vẫn bắt buộc có body.
+  if (!conv_id || !aus_id || (!is_file && !String(body || '').trim())) {
     return res.status(400).json({ error: 'conv_id, aus_id và body là bắt buộc' });
   }
 
-  const trimmedBody = String(body).trim();
+  const trimmedBody = String(body || '').trim();
 
   try {
-    const msg = await withConn(async conn => {
+    const result = await withConn(async conn => {
       // 1. Insert tin nhắn dùng MSG_SEQ
       const ins = await conn.execute(
         `INSERT INTO CHAT_MESSENGERS
@@ -306,22 +379,57 @@ router.post('/send', async (req, res) => {
         senderName = nameRes.rows[0]?.FULL_NAME || 'Unknown';
       }
 
+      // Metadata hội thoại để enrich event (cross-doc awareness): biết tin
+      // tới thuộc chứng từ nào / hội thoại nào mà không cần frontend lookup.
+      const metaRes = await conn.execute(
+        `SELECT c.conv_type, c.doc_type, c.doc_no, c.name,
+                (SELECT COUNT(*) FROM CHAT_PARTICIPANTS p2 WHERE p2.conv_id = c.conv_id) AS member_count
+         FROM   CHAT_CONVERSATIONS c WHERE c.conv_id = :conv_id`,
+        { conv_id },
+        { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+      const meta = metaRes.rows[0] || {};
+
       await conn.commit();
 
       return {
-        msg_id:          msgId,
-        conv_id,
-        from_aus_id:     aus_id,
-        from_name:       senderName,
-        body:            trimmedBody,
-        msg_type:        'USER',
-        reply_to_msg_id: reply_to_msg_id || null,
-        create_date:     msgDate,
+        msg: {
+          msg_id:          msgId,
+          conv_id,
+          from_aus_id:     aus_id,
+          from_name:       senderName,
+          body:            trimmedBody,
+          msg_type:        'USER',
+          reply_to_msg_id: reply_to_msg_id || null,
+          create_date:     msgDate,
+        },
+        meta: {
+          conv_type:    meta.CONV_TYPE     || null,
+          doc_type:     meta.DOC_TYPE      || null,
+          doc_no:       meta.DOC_NO        || null,
+          name:         meta.NAME          || null,
+          member_count: meta.MEMBER_COUNT  || 0,
+        },
       };
     });
 
+    const msg  = result.msg;
+    const meta = result.meta;
+    // Tên hiển thị hội thoại: CHANNEL (hoặc DOC nhóm >2 người) dùng name, còn lại dùng tên người gửi
+    const isGroup  = meta.conv_type === 'CHANNEL' || (meta.conv_type === 'DOC' && meta.member_count > 2);
+    const convName = isGroup ? meta.name : msg.from_name;
+
     // 5. Notify các thành viên khác (async, không block response)
-    deliverToConv(conv_id, { type: 'message', conv_id, msg }, aus_id)
+    //    Payload enrich: doc_type/doc_no/conv_type/conv_name cho cross-doc awareness.
+    deliverToConv(conv_id, {
+      type:      'message',
+      conv_id,
+      doc_type:  meta.doc_type,
+      doc_no:    meta.doc_no,
+      conv_type: meta.conv_type,
+      conv_name: convName,
+      msg,
+    }, aus_id)
       .catch(err => console.error('[Chat] deliverToConv:', err.message));
 
     res.json({ status: 'ok', msg });
@@ -330,6 +438,33 @@ router.post('/send', async (req, res) => {
     console.error('[Chat] POST /send:', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ─── POST /api/chat/attach ────────────────────────────────────────────────────
+// Gọi SAU khi đã insert xong dòng tin nhắn (POST /send) VÀ đã upload file thật
+// qua APEX callback (owner_id = msg_id). Route này KHÔNG ghi DB - chỉ broadcast
+// để các client khác (không phải người gửi) cập nhật bong bóng tin nhắn đã có
+// sẵn với thông tin file vừa upload xong.
+// Body: { conv_id, msg_id, fil_id, file_name, mime_type, file_size }
+router.post('/attach', (req, res) => {
+  const { conv_id, msg_id, fil_id, file_name, mime_type, file_size, aus_id } = req.body;
+
+  if (!conv_id || !msg_id || !fil_id) {
+    return res.status(400).json({ error: 'conv_id, msg_id và fil_id là bắt buộc' });
+  }
+
+  deliverToConv(conv_id, {
+    type:      'attachment',
+    conv_id,
+    msg_id,
+    fil_id,
+    file_name: file_name || null,
+    mime_type: mime_type || null,
+    file_size: file_size || null,
+  }, aus_id)
+    .catch(err => console.error('[Chat] deliverToConv (attach):', err.message));
+
+  res.json({ status: 'ok' });
 });
 
 // ─── POST /api/chat/typing/:conv_id/:aus_id ──────────────────────────────────
@@ -464,9 +599,9 @@ router.post('/read/:conv_id/:aus_id', async (req, res) => {
 });
 
 // ─── POST /api/chat/create ────────────────────────────────────────────────────
-// Tạo DM hoặc CHANNEL mới
+// Tạo DM, CHANNEL hoặc DOC mới
 // Body: { conv_type, name?, aus_id, username?, member_aus_ids, doc_type?, doc_no? }
-// doc_type + doc_no: bỏ trống = hội thoại chung; có giá trị = gắn với chứng từ
+// doc_type + doc_no: bỏ trống = hội thoại chung (DM/CHANNEL); DOC bắt buộc phải có
 router.post('/create', async (req, res) => {
   const { conv_type, name, aus_id, username, doc_type, doc_no } = req.body;
   const member_aus_ids = req.body.member_aus_ids || req.body.members;
@@ -474,18 +609,28 @@ router.post('/create', async (req, res) => {
   if (!conv_type || !aus_id || !Array.isArray(member_aus_ids) || member_aus_ids.length === 0) {
     return res.status(400).json({ error: 'conv_type, aus_id và member_aus_ids là bắt buộc' });
   }
-  if (conv_type !== 'DM' && conv_type !== 'CHANNEL') {
-    return res.status(400).json({ error: 'conv_type phải là DM hoặc CHANNEL' });
+  if (conv_type !== 'DM' && conv_type !== 'CHANNEL' && conv_type !== 'DOC') {
+    return res.status(400).json({ error: 'conv_type phải là DM, CHANNEL hoặc DOC' });
   }
   if (conv_type === 'CHANNEL' && !String(name || '').trim()) {
     return res.status(400).json({ error: 'CHANNEL phải có name' });
+  }
+  if (conv_type === 'DOC') {
+    if (!String(doc_type || '').trim() || !String(doc_no || '').trim()) {
+      return res.status(400).json({ error: 'DOC phải có doc_type và doc_no' });
+    }
+    if (member_aus_ids.length >= 2 && !String(name || '').trim()) {
+      return res.status(400).json({ error: 'DOC nhóm (≥2 thành viên) phải có name' });
+    }
   }
 
   const scopedDocType = doc_type || null;
   const scopedDocNo   = doc_no   || null;
 
-  // Với DM, kiểm tra nếu đã có conversation cùng scope (doc hoặc chung) giữa 2 người này
-  if (conv_type === 'DM') {
+  // DM: dedup theo scope (doc hoặc chung). DOC 1-1: dedup theo đúng conv_type + đúng chứng từ.
+  // DOC nhóm (≥2 người) và CHANNEL không dedup — luôn tạo hội thoại mới.
+  const dedupCheck = conv_type === 'DM' || (conv_type === 'DOC' && member_aus_ids.length === 1);
+  if (dedupCheck) {
     const partnerId = member_aus_ids.find(id => Number(id) !== Number(aus_id)) || member_aus_ids[0];
     try {
       const existing = await withConn(async conn => {
@@ -494,7 +639,7 @@ router.post('/create', async (req, res) => {
            FROM   CHAT_CONVERSATIONS c
            JOIN   CHAT_PARTICIPANTS p1 ON p1.conv_id = c.conv_id AND p1.aus_id = :aus_id
            JOIN   CHAT_PARTICIPANTS p2 ON p2.conv_id = c.conv_id AND p2.aus_id = :partner_id
-           WHERE  c.conv_type = 'DM'
+           WHERE  c.conv_type = :conv_type
              AND  ((:doc_type IS NULL AND c.doc_type IS NULL) OR c.doc_type = :doc_type)
              AND  ((:doc_no   IS NULL AND c.doc_no   IS NULL) OR c.doc_no   = :doc_no)
              AND  (SELECT COUNT(*) FROM CHAT_PARTICIPANTS WHERE conv_id = c.conv_id) = 2
@@ -502,6 +647,7 @@ router.post('/create', async (req, res) => {
           {
             aus_id:     Number(aus_id),
             partner_id: Number(partnerId),
+            conv_type,
             doc_type:   scopedDocType,
             doc_no:     scopedDocNo,
           },
@@ -519,7 +665,7 @@ router.post('/create', async (req, res) => {
 
   try {
     const convId = await withConn(async conn => {
-      const convName  = conv_type === 'CHANNEL' ? String(name).trim() : null;
+      const convName  = (conv_type === 'CHANNEL' || conv_type === 'DOC') ? (String(name || '').trim() || null) : null;
       const createdBy = username || null;
       const ins = await conn.execute(
         `INSERT INTO CHAT_CONVERSATIONS

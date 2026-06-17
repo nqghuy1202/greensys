@@ -14,8 +14,11 @@ chat-server/
   chat.js          /api/chat/* router — messages, conversations, typing, presence
   cqn.js           Oracle CQN subscription + ROWID cache
   events.js        Unified long-poll waiter map + event buffer
+  token.js         Verify SSE HMAC-SHA256 token (mirror logic của APEX callback `sseToken`)
   test-connection.js  Test DB pool (safe khi server đang chạy)
   test-cqn.js      Test CQN standalone (dừng server trước — tranh port)
+  test-sse.js      Test thủ công /api/sse — `node test-sse.js <aus_id> [host]`, tự mint token từ .env
+  test-chat.js     Test thủ công /api/chat/* — `node test-chat.js <aus_id> [conv_id] [host]`
   package.json
   .env             Required, không commit (xem biến bên dưới)
   docs/
@@ -68,7 +71,8 @@ curl http://localhost:3410/api/events/<aus_id>
 | Method | Path | Mô tả |
 |--------|------|-------|
 | GET | `/health` | Health check |
-| GET | `/api/events/:aus_id` | **Unified long-poll 25s** — notification + chat |
+| GET | `/api/sse` | SSE stream — query `token` (HMAC, verify qua `token.js`) + `lastEventId` cho replay |
+| GET | `/api/events/:aus_id` | **Unified long-poll 25s** — notification + chat (legacy, đã thay bằng SSE) |
 | GET | `/api/notify/:aus_id` | Manual trigger (debug) |
 | GET | `/api/chat/conversations/:aus_id` | Sidebar list (Messenger — không có doc) |
 | GET | `/api/chat/messages/:conv_id` | Message history |

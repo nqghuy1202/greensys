@@ -3,13 +3,11 @@
     if (window._eventsPoll) return;
     if (window.parent && window.parent !== window) return;
 
-    var SSE_URL = 'https://chattest.erp100.vn/api/sse';
-
     // ── SharedWorker ──────────────────────────────────────────────────────────
 
     var _port = null;
 
-    function initWorker() {
+    function initWorker(sseUrl) {
         var workerUrl = (window.APP_FILES || '') + 'sse-worker.js';
         try {
             var worker = new SharedWorker(workerUrl);
@@ -35,13 +33,15 @@
             } else if (msg.type === 'heartbeat_tick') {
                 // Worker chọn tab này gửi heartbeat chu kỳ này
                 apex.server.process('chatHeartbeat', {});
+            } else if (msg.type === 'sse_error') {
+                console.error('[SSE] connection error:', msg.reason, msg);
             } else {
                 handleEvent(msg);
             }
         };
 
         _port.start();
-        _port.postMessage({ type: 'init', sseUrl: SSE_URL });
+        _port.postMessage({ type: 'init', sseUrl: sseUrl });
 
         // Heartbeat đầu tiên ngay lập tức, các lần sau do worker điều phối
         apex.server.process('chatHeartbeat', {});
@@ -66,8 +66,26 @@
         apex.server.process('notificationCount', { x01: $v('P0_AUS_ID') }, {
             dataType: 'json',
             success: function (data) {
-                if (data) updateNotifBadge(data.count || 0);
+                if (data && data.state === 'success') updateNotifBadge(data.count || 0);
+                else if (data) console.error('[notif]', data.message);
+            },
+            error: function () {
+                console.warn('[notif] notificationCount AJAX error');
             }
+        });
+    }
+
+    function fetchSseUrl(callback) {
+        globalHandleAjaxProcess(['getUrlNodeJs', {}, 'json']).then(function (urlObj) {
+            if (urlObj && urlObj.state === 'success' && urlObj.url) {
+                callback(urlObj.url);
+            } else {
+                console.error('[SSE] getUrlNodeJs failed:', urlObj && urlObj.message);
+                callback(null);
+            }
+        }).catch(function (err) {
+            console.error('[SSE] getUrlNodeJs request error:', err);
+            callback(null);
         });
     }
 
@@ -102,12 +120,16 @@
 
     $(document).ready(function () {
         var ausId = $v('P0_AUS_ID');
-        if (!ausId) return;
+        if (!ausId) return; // chưa đăng nhập (vd. trang login) — không gọi bất kỳ AJAX nào
 
         window._eventsPoll = true;
 
         initNotifBell();
         fetchNotifCount();
-        initWorker();
+
+        fetchSseUrl(function (sseUrl) {
+            if (!sseUrl) return; // không lấy được URL → bỏ qua real-time, badge vẫn hoạt động qua fetchNotifCount
+            initWorker(sseUrl);
+        });
     });
 })();
