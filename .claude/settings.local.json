@@ -64,7 +64,10 @@
       "PowerShell(New-Item *)",
       "Bash(dir D:greensys *)",
       "Bash(Test-Path *)",
-      "PowerShell(Head *)"
+      "PowerShell(Head *)",
+      "Bash(git push *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
     ]
   },
   "enabledPlugins": {
