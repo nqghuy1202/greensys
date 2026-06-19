@@ -308,13 +308,19 @@ router.get('/messages/:conv_id', async (req, res) => {
 
 // ─── POST /api/chat/send ──────────────────────────────────────────────────────
 // Gửi tin nhắn mới
-// Body: { conv_id, aus_id, body, reply_to_msg_id? }
+// Body: { conv_id, aus_id, body, reply_to_msg_id?, fil_id?, file_name?, mime_type?, file_size? }
+//
+// fil_id (tùy chọn): file đã được upload TRƯỚC qua APEX callback (trả về fil_id),
+// nên ở đây chỉ cần 1 INSERT duy nhất đã có sẵn fil_id - không còn bước insert-rỗng-
+// rồi-update-sau như thiết kế cũ (loại bỏ race condition giữa 2 transaction).
 router.post('/send', async (req, res) => {
-  const { conv_id, aus_id, partner_aus_id, username, from_name, body, reply_to_msg_id, is_file } = req.body;
+  const { conv_id, aus_id, partner_aus_id, username, from_name, body, reply_to_msg_id,
+          is_file, fil_id, file_name, mime_type, file_size } = req.body;
 
-  // Tin nhắn kèm file (is_file=true) cho phép body rỗng - file mới là nội dung chính,
-  // caption chỉ là phần thêm. Tin nhắn thường vẫn bắt buộc có body.
-  if (!conv_id || !aus_id || (!is_file && !String(body || '').trim())) {
+  // Tin nhắn kèm file (is_file=true / có fil_id) cho phép body rỗng - file mới là
+  // nội dung chính, caption chỉ là phần thêm. Tin nhắn thường vẫn bắt buộc có body.
+  const hasFile = !!(is_file || fil_id);
+  if (!conv_id || !aus_id || (!hasFile && !String(body || '').trim())) {
     return res.status(400).json({ error: 'conv_id, aus_id và body là bắt buộc' });
   }
 
@@ -322,12 +328,12 @@ router.post('/send', async (req, res) => {
 
   try {
     const result = await withConn(async conn => {
-      // 1. Insert tin nhắn dùng MSG_SEQ
+      // 1. Insert tin nhắn dùng MSG_SEQ (kèm fil_id nếu có - 1 transaction duy nhất)
       const ins = await conn.execute(
         `INSERT INTO CHAT_MESSENGERS
-           (msg_id, conv_id, from_aus_id, aus_id, body, msg_type, reply_to_msg_id, created_by, create_date)
+           (msg_id, conv_id, from_aus_id, aus_id, body, msg_type, reply_to_msg_id, fil_id, created_by, create_date)
          VALUES
-           (MSG_SEQ.NEXTVAL, :conv_id, :from_aus_id, :aus_id, :body, 'USER', :reply_to_msg_id, :created_by, SYSDATE)
+           (MSG_SEQ.NEXTVAL, :conv_id, :from_aus_id, :aus_id, :body, 'USER', :reply_to_msg_id, :fil_id, :created_by, SYSDATE)
          RETURNING msg_id, create_date INTO :out_msg_id, :out_date`,
         {
           conv_id,
@@ -335,6 +341,7 @@ router.post('/send', async (req, res) => {
           aus_id:          partner_aus_id || null,   // người nhận = partner
           body:            trimmedBody,
           reply_to_msg_id: reply_to_msg_id || null,
+          fil_id:          fil_id || null,
           created_by:      username || null,          // G_USER_NAME
           out_msg_id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER },
           out_date:   { dir: oracledb.BIND_OUT, type: oracledb.DB_TYPE_TIMESTAMP },
@@ -402,6 +409,10 @@ router.post('/send', async (req, res) => {
           msg_type:        'USER',
           reply_to_msg_id: reply_to_msg_id || null,
           create_date:     msgDate,
+          fil_id:          fil_id || null,
+          file_name:       file_name || null,
+          mime_type:       mime_type || null,
+          file_size:       file_size || null,
         },
         meta: {
           conv_type:    meta.CONV_TYPE     || null,
@@ -440,11 +451,167 @@ router.post('/send', async (req, res) => {
   }
 });
 
+// ─── POST /api/chat/upload-send ──────────────────────────────────────────────
+// Gửi tin nhắn FILE/ẢNH. Body = bytes file thô (application/octet-stream),
+// metadata qua query string. Vì item File Browse của APEX KHÔNG gửi được bytes
+// trong AJAX, client đọc thẳng File object rồi POST bytes tới đây.
+//
+// Luồng: nhận BLOB -> pkg_upload_file.UploadFileChat (sinh fil_id + file_name
+// vật lý) -> INSERT CHAT_MESSENGERS với fil_id -> commit -> broadcast 'message'
+// (cùng shape với /send => real-time đầy đủ).
+//
+// Query: conv_id, aus_id, file_name, caption?, reply_to_msg_id?,
+//        co_id, oun_id, user_name, ffo_id?
+const uploadRaw = express.raw({ type: () => true, limit: '50mb' });
+router.post('/upload-send', uploadRaw, async (req, res) => {
+  const q = req.query;
+  const conv_id   = Number(q.conv_id);
+  const aus_id    = Number(q.aus_id);
+  const fileName  = (q.file_name || '').toString();
+  const caption   = (q.caption || '').toString().trim();
+  const replyId   = q.reply_to_msg_id ? Number(q.reply_to_msg_id) : null;
+  const coId      = (q.co_id || '').toString();
+  const ounId     = (q.oun_id || '').toString();
+  const userName  = (q.user_name || '').toString();
+  const ffoId     = q.ffo_id ? q.ffo_id.toString() : null;
+  const blob      = req.body;   // Buffer (express.raw)
+
+  if (!conv_id || !aus_id || !fileName) {
+    return res.status(400).json({ error: 'conv_id, aus_id và file_name là bắt buộc' });
+  }
+  if (!Buffer.isBuffer(blob) || blob.length === 0) {
+    return res.status(400).json({ error: 'Thiếu nội dung file (body rỗng)' });
+  }
+
+  try {
+    const result = await withConn(async conn => {
+      // 1. Upload BLOB qua package hệ thống -> fil_id + file_name vật lý
+      const up = await conn.execute(
+        `BEGIN
+           pkg_upload_file.UploadFileChat(
+             p_blob => :p_blob, p_name => :p_name, p_co_id => :p_co_id,
+             p_oun_id => :p_oun_id, p_module => :p_module, p_table => :p_table,
+             p_user_name => :p_user_name, p_id => :p_id, p_ffo_id => :p_ffo_id,
+             p_directory => NULL, p_fil_id => :p_fil_id, p_error => :p_error);
+         END;`,
+        {
+          p_blob:      { dir: oracledb.BIND_IN,  type: oracledb.BLOB,    val: blob },
+          p_name:      fileName,
+          p_co_id:     coId,
+          p_oun_id:    ounId,
+          p_module:    '01',
+          p_table:     'CHAT_MESSENGERS',
+          p_user_name: userName,
+          p_id:        { dir: oracledb.BIND_IN,  type: oracledb.NUMBER,  val: null },
+          p_ffo_id:    ffoId,
+          p_fil_id:    { dir: oracledb.BIND_OUT, type: oracledb.NUMBER },
+          p_error:     { dir: oracledb.BIND_OUT, type: oracledb.STRING, maxSize: 2000 },
+        }
+      );
+
+      const filId    = up.outBinds.p_fil_id;
+      const upError  = up.outBinds.p_error;
+      if (!filId) {
+        throw new Error('UploadFileChat: ' + (upError || 'không tạo được fil_id'));
+      }
+
+      // file_name vật lý + tên gốc để broadcast/preview
+      const fRes = await conn.execute(
+        `SELECT file_name, name, file_size FROM FILES WHERE fil_id = :fil_id`,
+        { fil_id: filId }, { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+      const fRow = fRes.rows[0] || {};
+
+      // 2. INSERT CHAT_MESSENGERS (1 INSERT, đã có fil_id) — giống /send
+      const ins = await conn.execute(
+        `INSERT INTO CHAT_MESSENGERS
+           (msg_id, conv_id, from_aus_id, aus_id, body, msg_type, reply_to_msg_id, fil_id, created_by, create_date)
+         VALUES
+           (MSG_SEQ.NEXTVAL, :conv_id, :from_aus_id, NULL, :body, 'USER', :reply_to_msg_id, :fil_id, :created_by, SYSDATE)
+         RETURNING msg_id, create_date INTO :out_msg_id, :out_date`,
+        {
+          conv_id, from_aus_id: aus_id, body: caption || null,
+          reply_to_msg_id: replyId, fil_id: filId, created_by: userName || null,
+          out_msg_id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER },
+          out_date:   { dir: oracledb.BIND_OUT, type: oracledb.DB_TYPE_TIMESTAMP },
+        }
+      );
+      const msgId   = ins.outBinds.out_msg_id[0];
+      const msgDate = ins.outBinds.out_date[0];
+
+      // 3. Preview hội thoại
+      const isImg = /\.(jpe?g|png|gif|webp|bmp|svg)$/i.test(fRow.NAME || fileName);
+      const preview = caption || (isImg ? '[Hình ảnh]' : '[Tệp tin] ' + (fRow.NAME || fileName));
+      await conn.execute(
+        `UPDATE CHAT_CONVERSATIONS
+         SET last_msg_id = :msg_id, last_msg_preview = :preview,
+             last_msg_date = :msg_date, modified_by = :username, modify_date = SYSTIMESTAMP
+         WHERE conv_id = :conv_id`,
+        { msg_id: msgId, preview: preview.substring(0, 200), msg_date: msgDate,
+          username: userName || null, conv_id }
+      );
+      await conn.execute(
+        `UPDATE CHAT_PARTICIPANTS SET last_read_msg_id = :msg_id
+         WHERE conv_id = :conv_id AND aus_id = :aus_id`,
+        { msg_id: msgId, conv_id, aus_id }
+      );
+
+      // 4. Tên người gửi + metadata hội thoại (enrich cho cross-doc)
+      const nameRes = await conn.execute(
+        `SELECT e.full_name FROM APP_USERS u JOIN EMPLOYEES e ON e.emp_id = u.emp_id
+         WHERE u.aus_id = :aus_id`,
+        { aus_id }, { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+      const metaRes = await conn.execute(
+        `SELECT c.conv_type, c.doc_type, c.doc_no, c.name,
+                (SELECT COUNT(*) FROM CHAT_PARTICIPANTS p2 WHERE p2.conv_id = c.conv_id) AS member_count
+         FROM CHAT_CONVERSATIONS c WHERE c.conv_id = :conv_id`,
+        { conv_id }, { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+      const meta = metaRes.rows[0] || {};
+
+      await conn.commit();
+
+      return {
+        msg: {
+          msg_id: msgId, conv_id, from_aus_id: aus_id,
+          from_name: nameRes.rows[0]?.FULL_NAME || 'Unknown',
+          body: caption || null, msg_type: 'USER',
+          reply_to_msg_id: replyId, create_date: msgDate,
+          fil_id: filId, file_name: fRow.FILE_NAME || null,
+          file_disp_name: fRow.NAME || fileName, file_size: fRow.FILE_SIZE || null,
+        },
+        meta: {
+          conv_type: meta.CONV_TYPE || null, doc_type: meta.DOC_TYPE || null,
+          doc_no: meta.DOC_NO || null, name: meta.NAME || null,
+          member_count: meta.MEMBER_COUNT || 0,
+        },
+      };
+    });
+
+    const msg = result.msg, meta = result.meta;
+    const isGroup  = meta.conv_type === 'CHANNEL' || (meta.conv_type === 'DOC' && meta.member_count > 2);
+    const convName = isGroup ? meta.name : msg.from_name;
+
+    deliverToConv(conv_id, {
+      type: 'message', conv_id,
+      doc_type: meta.doc_type, doc_no: meta.doc_no,
+      conv_type: meta.conv_type, conv_name: convName, msg,
+    }, aus_id)
+      .catch(err => console.error('[Chat] deliverToConv (upload-send):', err.message));
+
+    res.json({ status: 'ok', msg });
+
+  } catch (err) {
+    console.error('[Chat] POST /upload-send:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── POST /api/chat/attach ────────────────────────────────────────────────────
-// Gọi SAU khi đã insert xong dòng tin nhắn (POST /send) VÀ đã upload file thật
-// qua APEX callback (owner_id = msg_id). Route này KHÔNG ghi DB - chỉ broadcast
-// để các client khác (không phải người gửi) cập nhật bong bóng tin nhắn đã có
-// sẵn với thông tin file vừa upload xong.
+// DEPRECATED: thiết kế cũ (insert msg rỗng -> upload -> update fil_id -> báo qua
+// route này). Từ khi /send nhận thẳng fil_id (upload file TRƯỚC, insert 1 lần),
+// route này không còn cần thiết - giữ lại để tương thích ngược, không gọi mới.
 // Body: { conv_id, msg_id, fil_id, file_name, mime_type, file_size }
 router.post('/attach', (req, res) => {
   const { conv_id, msg_id, fil_id, file_name, mime_type, file_size, aus_id } = req.body;
@@ -463,6 +630,48 @@ router.post('/attach', (req, res) => {
     file_size: file_size || null,
   }, aus_id)
     .catch(err => console.error('[Chat] deliverToConv (attach):', err.message));
+
+  res.json({ status: 'ok' });
+});
+
+// ─── POST /api/chat/broadcast-message ────────────────────────────────────────
+// Phát SSE type:'message' cho tin nhắn ĐÃ được APEX ghi DB (luồng gửi file:
+// msUploadAttachment + msCreateFileMessage làm toàn bộ ghi DB, Node CHỈ relay).
+// KHÔNG đụng DB ở đây - chỉ enrich payload giống /send rồi deliverToConv.
+// Body: { conv_id, msg_id, aus_id, body, fil_id, file_name, file_disp_name,
+//         reply_to_msg_id, doc_type, doc_no, conv_type, conv_name, from_name? }
+router.post('/broadcast-message', (req, res) => {
+  const { conv_id, msg_id, aus_id, body, fil_id, file_name, file_disp_name,
+          reply_to_msg_id, doc_type, doc_no, conv_type, conv_name, from_name } = req.body;
+
+  if (!conv_id || !msg_id || !aus_id) {
+    return res.status(400).json({ error: 'conv_id, msg_id và aus_id là bắt buộc' });
+  }
+
+  // Cùng shape event với /send để onChatEvent xử lý đồng nhất. Client nhận
+  // 'message' sẽ refreshThread() qua APEX (đã JOIN FILES) nên các field nội
+  // dung chỉ mang tính enrich/cross-doc, không phải nguồn render chính.
+  deliverToConv(conv_id, {
+    type:      'message',
+    conv_id,
+    doc_type:  doc_type  || null,
+    doc_no:    doc_no    || null,
+    conv_type: conv_type || null,
+    conv_name: conv_name || null,
+    msg: {
+      msg_id,
+      conv_id,
+      from_aus_id:     aus_id,
+      from_name:       from_name || null,
+      body:            body || null,
+      msg_type:        'USER',
+      reply_to_msg_id: reply_to_msg_id || null,
+      fil_id:          fil_id || null,
+      file_name:       file_name || null,
+      file_disp_name:  file_disp_name || null,
+    },
+  }, aus_id)
+    .catch(err => console.error('[Chat] deliverToConv (broadcast-message):', err.message));
 
   res.json({ status: 'ok' });
 });
