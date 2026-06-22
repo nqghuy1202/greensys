@@ -129,7 +129,7 @@ React/ReactDOM/Babel phải load xong trước bước 2 — load sequentially t
 |--------|-------|
 | `window.notifMenuOpen(btn)` | Mở dot menu ⋯ per item |
 | `window.notifMenuView()` | Set page item ANO_ID để navigate |
-| `window.notifMenuMarkRead()` | Đánh dấu đã đọc (optimistic UI) |
+| `window.notifMenuMarkRead()` | Gọi `notifMarkRead` (x01=ano_id), flash `.ni-just-read` 450ms rồi `refreshAnoKeepScroll()` |
 | `window.notifMenuDelete()` | Xóa thông báo (slide out + soft delete) |
 | `window.notifBulkMenuOpen/ScheduleClose/CancelClose` | Hover open/close cho `#Btn_BulkAction` |
 | `window.notifBulkMarkAll/DeleteAll` | Bulk actions |

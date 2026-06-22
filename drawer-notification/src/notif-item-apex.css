@@ -25,6 +25,12 @@
 .ni.read-Y .ni-badge { opacity: .55; }
 .ni.read-Y .ni-title { color: #6B7280; font-weight: 400; }
 
+/* Flash khi vừa đánh dấu đã đọc (mark-read transition) */
+.ni.ni-just-read {
+  transition: background-color .4s ease;
+  background-color: #EFF6FF;
+}
+
 /* ── Left border per status ─────────────────────────────────── */
 .ni.status-waiting    { border-left-color: #F18812; }
 .ni.status-approved   { border-left-color: #31956D; }

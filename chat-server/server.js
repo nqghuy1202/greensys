@@ -5,7 +5,7 @@ const express  = require('express');
 const http     = require('http');
 const cors     = require('cors');
 const oracledb = require('oracledb');
-const { startCQN }                        = require('./cqn');
+const { startCQN, stopCQN }               = require('./cqn');
 const { router: chatRouter }              = require('./chat');
 const { notifyUser, drainAll, registerSSE } = require('./events');
 const { verifyToken } = require('./token');
@@ -57,11 +57,14 @@ app.get('/health', (req, res) => {
     res.json({ status: 'OK', time: new Date().toISOString() });
 });
 
-// Manual trigger for testing/debugging
-app.get('/api/notify/:aus_id', (req, res) => {
-    notifyUser(req.params.aus_id);
-    res.json({ status: 'ok' });
-});
+// Manual trigger for testing/debugging — endpoint không auth, chỉ bật ngoài production.
+// Trong production (NODE_ENV=production) trả 404 để không ai trigger notification tùy ý.
+if (process.env.NODE_ENV !== 'production') {
+    app.get('/api/notify/:aus_id', (req, res) => {
+        notifyUser(req.params.aus_id);
+        res.json({ status: 'ok' });
+    });
+}
 
 // SSE endpoint — browser kết nối trực tiếp qua nginx (không qua ORDS)
 const SSE_ORIGIN = process.env.SSE_ORIGIN || 'https://erp.greensys.vn:8211';
@@ -115,6 +118,7 @@ function shutdown(signal) {
     sseIntervals.forEach(t => clearInterval(t));
     sseIntervals.clear();
     drainAll();
+    stopCQN().catch(() => {});
     server.close(() => {
         oracledb.getPool().close(10)
             .then(() => { console.log('[Server] Pool closed'); process.exit(0); })

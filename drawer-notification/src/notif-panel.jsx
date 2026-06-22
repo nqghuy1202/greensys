@@ -431,17 +431,31 @@ function NotifPanel() {
   const [loading,    setLoading]    = React.useState(true);
   const [error,      setError]      = React.useState(null);
 
-  /* ── Load data ── */
+  const scrollRef  = React.useRef(null);
+  const hasDataRef = React.useRef(false);
+  React.useEffect(() => { hasDataRef.current = data.length > 0; }, [data]);
+
+  /* ── Load data ──
+     Lần đầu (chưa có data): show spinner như cũ.
+     Refresh sau đó (SSE trigger, đã có data): KHÔNG bật spinner — tránh
+     swap toàn bộ list sang EmptyState rồi render lại làm scroll nhảy về đầu.
+     Đồng thời lưu/khôi phục scrollTop quanh lần setData để giữ vị trí cuộn. */
   const loadData = React.useCallback(async () => {
-    setLoading(true);
+    const isRefresh = hasDataRef.current;
+    if (!isRefresh) setLoading(true);
     setError(null);
+    const el = scrollRef.current;
+    const prevScrollTop = el ? el.scrollTop : 0;
     try {
       const result = await apexProcess('notifLoad', {});
       if (result && result.items) setData(result.items);
     } catch (e) {
       setError('Không thể tải thông báo');
     } finally {
-      setLoading(false);
+      if (!isRefresh) setLoading(false);
+      requestAnimationFrame(() => {
+        if (scrollRef.current) scrollRef.current.scrollTop = prevScrollTop;
+      });
     }
   }, []);
 
@@ -663,7 +677,7 @@ function NotifPanel() {
       </div>
 
       {/* ═══ LIST ═══ */}
-      <div className="notif-scroll" style={{ flex: 1, overflowY: 'auto' }}>
+      <div className="notif-scroll" ref={scrollRef} style={{ flex: 1, overflowY: 'auto' }}>
         {(loading || grouped.length === 0) ? (
           <EmptyState
             isFiltered={isFiltered}

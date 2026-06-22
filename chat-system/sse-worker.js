@@ -25,6 +25,7 @@ var _lastId         = 0;
 var _backoff        = 5000;
 var _reconnectTimer = null;
 var _heartbeatTimer = null;
+var _connecting     = false;  // chặn 2 tab cùng init → 2 EventSource (orphan leak)
 
 // ── Port management ───────────────────────────────────────────────────────────
 
@@ -38,7 +39,7 @@ self.onconnect = function (e) {
         switch (msg.type) {
             case 'init':
                 SSE_URL = msg.sseUrl;
-                if (!_es && !_reconnectTimer) connectSSE();
+                if (!_es && !_reconnectTimer && !_connecting) connectSSE();
                 break;
             case 'token_response':
                 onTokenReceived(msg.token);
@@ -67,6 +68,36 @@ function prunePorts() {
     });
 }
 
+// Dừng toàn bộ hoạt động khi không còn tab nào sống — tránh giữ SSE conn,
+// vòng mint token và reconnect chạy vô hạn (hao pin + giữ connection ở server).
+// Tab mới connect sẽ gửi 'init' và khởi động lại.
+function pauseSSE() {
+    if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+    if (_heartbeatTimer) { clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
+    if (_es) { try { _es.close(); } catch (_) {} _es = null; }
+    _connecting     = false;
+    _tokenRequested = false;
+}
+
+// Chọn "leader" = port có ping gần đây nhất → tab chắc chắn còn sống nhất.
+// Tránh luôn dùng ports[0]: nếu tab đó đã đóng, postMessage KHÔNG throw (no-op lặng lẽ)
+// → heartbeat/mint mất tới ~50s (đến khi prune), user nhấp nháy offline.
+function pickLeader() {
+    var best = null, bestTs = -1;
+    for (var i = 0; i < ports.length; i++) {
+        var ts = portPings.get(ports[i]) || 0;
+        if (ts > bestTs) { bestTs = ts; best = ports[i]; }
+    }
+    return best;
+}
+
+// Gỡ port khỏi CẢ ports[] và portPings (tránh rò entry Map).
+function dropPort(p) {
+    var i = ports.indexOf(p);
+    if (i >= 0) ports.splice(i, 1);
+    portPings.delete(p);
+}
+
 function broadcast(data) {
     var alive = [];
     for (var i = 0; i < ports.length; i++) {
@@ -81,14 +112,17 @@ function broadcast(data) {
 
 function sendHeartbeat() {
     prunePorts();
-    if (ports.length === 0) { clearInterval(_heartbeatTimer); _heartbeatTimer = null; return; }
-    try { ports[0].postMessage({ type: 'heartbeat_tick' }); }
-    catch (_) { ports.shift(); sendHeartbeat(); }
+    if (ports.length === 0) { pauseSSE(); return; }
+    var leader = pickLeader();
+    try { leader.postMessage({ type: 'heartbeat_tick' }); }
+    catch (_) { dropPort(leader); sendHeartbeat(); }
 }
 
 function startHeartbeatLoop() {
     if (_heartbeatTimer) return;
-    // Không fire ngay — tab tự gửi heartbeat đầu tiên khi initWorker()
+    // Fire heartbeat đầu NGAY do worker điều phối (chỉ ports[0]) — đảm bảo đúng 1
+    // heartbeat lúc khởi động dù mở bao nhiêu tab (trước đây mỗi tab tự gửi 1 cái).
+    sendHeartbeat();
     _heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_MS);
 }
 
@@ -109,22 +143,27 @@ function getToken(callback) {
 
 function requestTokenFromTab() {
     prunePorts();
-    if (ports.length === 0) { setTimeout(requestTokenFromTab, 1000); return; }
-    try { ports[0].postMessage({ type: 'mint_token' }); }
-    catch (_) { ports.shift(); requestTokenFromTab(); }
+    if (ports.length === 0) { pauseSSE(); return; }  // không loop vô hạn khi 0 tab
+    var leader = pickLeader();
+    try { leader.postMessage({ type: 'mint_token' }); }
+    catch (_) { dropPort(leader); requestTokenFromTab(); }
 }
 
 function onTokenReceived(newToken) {
-    _tokenRequested = false;
     if (!newToken || newToken.indexOf('.') < 0) {
+        // GIỮ _tokenRequested = true để chặn getToken kích hoạt mint song song;
+        // chỉ chính nhánh retry này được phép gọi lại requestTokenFromTab.
         broadcast({ type: 'sse_error', reason: 'token_invalid' });
         setTimeout(requestTokenFromTab, 3000);
         return;
     }
+    _tokenRequested = false;
     // Parse expiry từ token body: base64url("<aus_id>|<exp_epoch_seconds>")
     try {
-        var body    = newToken.slice(0, newToken.lastIndexOf('.'));
-        var decoded = atob(body.replace(/-/g, '+').replace(/_/g, '/'));
+        var body = newToken.slice(0, newToken.lastIndexOf('.'));
+        var b64  = body.replace(/-/g, '+').replace(/_/g, '/');
+        while (b64.length % 4) b64 += '=';   // pad base64url, tránh atob throw ở vài browser
+        var decoded = atob(b64);
         _tokenExpiry = Number(decoded.split('|')[1]) || 0;
     } catch (_) {
         _tokenExpiry = Date.now() / 1000 + 120; // fallback 120s
@@ -139,27 +178,36 @@ function onTokenReceived(newToken) {
 
 function connectSSE() {
     _reconnectTimer = null;
+    _connecting = true;          // set đồng bộ NGAY — chặn init thứ 2 lọt guard trong lúc getToken async
     getToken(function (tok) {
+        // Trong lúc chờ token, tất cả tab có thể đã đóng → đừng mở connection mồ côi
+        prunePorts();
+        if (ports.length === 0) { pauseSSE(); return; }
+
         var url = SSE_URL + '?token=' + encodeURIComponent(tok) + '&lastEventId=' + _lastId;
         _es = new EventSource(url);
 
         _es.onopen = function () {
+            _connecting = false;
             _backoff = 5000;
         };
 
         _es.onmessage = function (ev) {
             if (ev.lastEventId) _lastId = Number(ev.lastEventId);
-            try { broadcast(JSON.parse(ev.data)); } catch (_) {}
+            try { broadcast(JSON.parse(ev.data)); }
+            catch (err) { console.warn('[SSE worker] bad event payload:', err, ev.data); }
         };
 
         _es.addEventListener('replaced', function () {
-            // Không xảy ra với SharedWorker (worker không bị replaced)
-            // Guard phòng edge case server restart
+            // Hiếm với SharedWorker; guard phòng edge case server restart.
+            // Đi qua scheduleReconnect() để có guard 0-port + backoff (không reconnect khi 0 tab).
+            _connecting = false;
             _es.close(); _es = null;
-            _reconnectTimer = setTimeout(connectSSE, 3000);
+            scheduleReconnect();
         });
 
         _es.onerror = function () {
+            _connecting = false;
             _es.close(); _es = null;
             _token = null; // buộc mint token mới khi reconnect
             broadcast({ type: 'sse_error', reason: 'connection_error', sseUrl: SSE_URL, backoffMs: _backoff });
@@ -169,6 +217,8 @@ function connectSSE() {
 }
 
 function scheduleReconnect() {
+    prunePorts();
+    if (ports.length === 0) { pauseSSE(); return; }  // không reconnect khi không còn tab
     _reconnectTimer = setTimeout(connectSSE, _backoff);
     _backoff = Math.min(_backoff * 2, 60000);
 }

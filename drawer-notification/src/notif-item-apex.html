@@ -5,7 +5,8 @@
     STATUS_LABEL, NGAY_TAO, ANO_NAME, JES_NAME, ANO_ID, AHH_ID
   ============================================================ -->
 
-<div class="ni &STATUS_CSS. read-&IS_READ." data-ano-id="&ANO_ID." data-ahh-id="&AHH_ID.">
+<div class="ni &STATUS_CSS. read-&IS_READ." data-ano-id="&ANO_ID." data-ahh-id="&AHH_ID."
+     onclick="notifItemClick(event, this)" style="cursor:pointer;">
   <div class="ni-inner">
 
     <!-- Row 1: unread dot · doc number · status badge · date -->
@@ -38,7 +39,7 @@
     </svg>
     Xem chứng từ
   </button>
-  <button type="button" class="ni-dd-item dd-read" onclick="notifMenuMarkRead()">
+  <button type="button" class="ni-dd-item dd-read" onclick="notifMenuMarkRead(event)">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
     </svg>

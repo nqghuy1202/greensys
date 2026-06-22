@@ -10,17 +10,25 @@ Full-page chat 3 cột (sidebar / thread / info panel). APEX page type: **Normal
 
 ```
 chat-system/
-  chat-page.fgvd.js     ← paste vào "Function and Global Variable Declaration"
-  chat-page.onload.js   ← paste vào "Execute when Page Loads" (chỉ window.csInit())
-  chat-page.css         ← paste vào Page → CSS → Inline
-  global.js             ← Theme global JS (SSE client + notification bell)
-  sse-worker.js         ← SharedWorker — upload lên Static Application Files
+  chat-page.fgvd.js        ← paste vào "Function and Global Variable Declaration"
+  chat-page.onload.js      ← paste vào "Execute when Page Loads" (chỉ window.csInit())
+  chat-page.css            ← paste vào Page → CSS → Inline
+  global.js                ← Theme global JS (SSE client + notification bell)
+  sse-worker.js            ← SharedWorker — upload lên Static Application Files
+  application_process.sql  ← NGUỒN THẬT — 5 Application Process (Page 0, không pageId):
+                              chatHeartbeat, getUrlNodeJs, loadAppConfig, notificationCount, sseToken
   docs/
-    da-setup.md         Bảng 22 Dynamic Actions + checklist deploy
-    native.sql          9 page-level Ajax Callbacks SQL đầy đủ
-    page0-callbacks.sql 3 Page 0 / Application Process callbacks (sseToken, chatHeartbeat, notificationCount)
-    callbacks-v2.sql    Legacy JSX callbacks (tham khảo)
+    da-setup.md           Bảng 22 Dynamic Actions + checklist deploy
+    native.sql            9 page-level Ajax Callbacks SQL đầy đủ
+    page0-callbacks.sql   ⚠️ LỖI THỜI — bản nháp cũ, thiếu fix g_x01 fallback và thiếu
+                           getUrlNodeJs/loadAppConfig. Đừng copy từ đây — dùng application_process.sql.
+    native-plan.md        Nhật ký migration JSX→native (lịch sử, không phải kiến trúc hiện tại)
+    callbacks-v2.sql      Legacy JSX callbacks (tham khảo)
 ```
+
+**Không có lệnh build/test/lint** — dự án paste-tay vào APEX Builder, không phải npm project.
+Trước khi paste JS, kiểm tra cú pháp cục bộ: `node --check global.js`, `node --check sse-worker.js`,
+`node --check chat-page.fgvd.js`.
 
 ## Deploy lên APEX
 
@@ -108,16 +116,38 @@ Tab B ──┼── MessagePort ──► sse-worker.js (SharedWorker)
 Tab C ──┘                       │
                                 ├── 1 SSE connection duy nhất (EventSource)
                                 ├── Token cache — mint lại khi còn < 30s TTL
-                                └── heartbeat_tick → chỉ ports[0] gửi chatHeartbeat
+                                └── heartbeat_tick → chỉ "leader" gửi chatHeartbeat
 ```
 
-**Flow mint token:** Worker không có APEX session → gửi `mint_token` tới `ports[0]` → tab gọi `apex.server.process('sseToken', { x01: $v('P0_AUS_ID') })` → trả kết quả về worker.
+**Flow mint token:** Worker không có APEX session → gửi `mint_token` tới leader → tab gọi `apex.server.process('sseToken', { x01: $v('P0_AUS_ID') })` → trả kết quả về worker.
+
+**Leader = port có ping gần nhất** (`pickLeader()`), KHÔNG phải `ports[0]` cố định — vì `postMessage`
+tới port đã đóng không throw, nên luôn dùng tab đầu tiên có thể gửi heartbeat/mint vào "lỗ đen" tới
+~50s (tới khi prune). Áp dụng cho cả `sendHeartbeat` và `requestTokenFromTab`.
+
+**Lifecycle khi 0 tab:** `pauseSSE()` đóng EventSource + dừng mọi timer khi `ports.length === 0`
+(gọi từ `sendHeartbeat`, `requestTokenFromTab`, `scheduleReconnect`) — tránh worker chạy vô hạn
+(SSE conn + mint loop) sau khi user đóng hết tab. Tab mới gửi `init` sẽ khởi động lại.
+
+**Race double-connect:** cờ `_connecting` set NGAY khi vào `connectSSE()` (trước khi `getToken` async
+trả về) để chặn 2 tab cùng gửi `init` gần như đồng thời tạo 2 `EventSource` (cái cũ orphan, không
+bao giờ `close()`).
 
 **Deploy prerequisite:** `window.APP_FILES = '#APP_FILES#'` phải có trong **Page 0 FGVD** (apex.env.APP_FILES = undefined trong APEX 24.2). Worker URL = `window.APP_FILES + 'sse-worker.js'`.
 
-`sseToken` và `notificationCount` là **Application Process** (không pageId) vì global.js chạy trên mọi page.
+`sseToken`, `chatHeartbeat`, `notificationCount`, `getUrlNodeJs` đều là **Application Process**
+(không pageId) vì global.js chạy trên mọi page. `:G_AUS_ID` không tin cậy trong Application Process
+AJAX context — `sseToken`/`chatHeartbeat` ưu tiên `apex_application.g_x01` (global.js gửi
+`x01: $v('P0_AUS_ID')`), fallback `:G_AUS_ID`. `notificationCount` resolve qua `:APP_USER` lookup
+(không tin `g_x01` từ client cho việc đếm — security).
 
-**Tab liveliness:** Tab ping worker mỗi 25s. Worker prune port chết (không ping > 50s) trước mỗi heartbeat tick.
+**Tab liveliness:** Tab ping worker mỗi 25s. Worker prune port chết (không ping > 50s) trước mỗi
+heartbeat tick / chọn leader. `dropPort()` gỡ đồng thời `ports[]` và `portPings` Map khi
+`postMessage` lỗi (tránh rò entry).
+
+**Cache cứng đầu:** sửa `sse-worker.js` xong phải **Terminate worker thủ công**
+(`chrome://inspect/#workers`) hoặc đóng hết tab — browser cache SharedWorker rất chặt, không tự
+reload khi file thay đổi.
 
 ## :APP_USER Pattern (bắt buộc trong mọi callback)
 

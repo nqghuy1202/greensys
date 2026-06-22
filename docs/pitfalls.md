@@ -10,8 +10,10 @@
 -- Sai:
 typ => DBMS_CRYPTO.HMAC_SH256
 -- Đúng:
-typ => 2   -- DBMS_CRYPTO.HMAC_SH256 = 2
+typ => 3   -- DBMS_CRYPTO.HMAC_SH256 = 3 (HMAC_MD5=1, HMAC_SH1=2, HMAC_SH256=3)
 ```
+
+> Giá trị **3** là giá trị đang chạy thật trong `sseToken` (application_process.sql) và khớp với `token.js` (Node `crypto` HMAC-SHA256). Giá trị `2` là HMAC_SH1 — sai thuật toán.
 
 All known traps in this project. Check before coding.
 

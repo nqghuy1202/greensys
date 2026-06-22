@@ -4,11 +4,23 @@
 
 var pageId = $v('pFlowStepId');
 
+/* ── Refresh Cr_Ano giữ nguyên vị trí cuộn ────────────────── */
+function refreshAnoKeepScroll() {
+    var scrollEl = document.getElementById('notif-scroll');
+    var scrollTop = scrollEl ? scrollEl.scrollTop : 0;
+    try {
+        apex.region('Cr_Ano').widget().one('apexafterrefresh', function () {
+            if (scrollEl) scrollEl.scrollTop = scrollTop;
+        });
+        apex.region('Cr_Ano').refresh();
+    } catch (_) {}
+}
+
 /* ── Helper dùng chung: gọi bulk process + refresh region ─── */
 function apexBulkProcess(processName) {
     apex.server.process(processName, {}, {
         pageId: 0,
-        success: function () { try { apex.region('Cr_Ano').refresh(); } catch (_) {} }
+        success: function () { refreshAnoKeepScroll(); }
     });
 }
 
@@ -160,23 +172,38 @@ function notifItemClick(event, inner) {
 
     window.notifMenuView = function () {
         if (!_activeItem) return;
-        apex.item('P' + pageId + '_ANO_ID').setValue(_activeItem.anoId);
+        var anoId = _activeItem.anoId;
         niMenuClose();
+        notifNavigate(anoId);
     };
 
     window.notifMenuMarkRead = function () {
         if (!_activeItem) return;
         var anoId = _activeItem.anoId;
-        var el    = _activeItem.el;
+        var el     = _activeItem.el;
         niMenuClose();
 
-        if (el) {
-            el.classList.replace('read-N', 'read-Y');
-            var dot = el.querySelector('.ni-dot');
-            if (dot) dot.style.background = 'transparent';
-        }
-
         apex.server.process('notifMarkRead', { x01: anoId }, { pageId: 0 });
+
+        if (el) {
+            el.classList.add('ni-just-read');
+            el.classList.remove('read-N');
+            el.classList.add('read-Y');
+            var dot = el.querySelector('.ni-dot');
+            if (dot) {
+                dot.style.transition = 'opacity .35s ease, transform .35s ease';
+                requestAnimationFrame(function () {
+                    dot.style.opacity   = '0';
+                    dot.style.transform = 'scale(0)';
+                });
+            }
+            setTimeout(function () {
+                el.classList.remove('ni-just-read');
+                refreshAnoKeepScroll();
+            }, 450);
+        } else {
+            refreshAnoKeepScroll();
+        }
     };
 
     window.notifMenuDelete = function () {
@@ -215,7 +242,7 @@ function notifItemClick(event, inner) {
     var $        = inIframe ? window.parent.apex.jQuery : apex.jQuery;
     var doc      = inIframe ? window.parent.document    : document;
     $(doc).off('apex:notifEvent.tc').on('apex:notifEvent.tc', function (_, data) {
-        try { apex.region('Cr_Ano').refresh(); } catch (_) {}
+        refreshAnoKeepScroll();
     });
 })();
 

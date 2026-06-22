@@ -7,6 +7,10 @@ const router = express.Router();
 
 // ─── In-memory state ─────────────────────────────────────────────────────────
 const typingState      = new Map();   // `${conv_id}:${aus_id}` → expireHandle
+// LƯU Ý (F7): participantCache chỉ được invalidate ở POST /create. Nếu thành viên
+// hội thoại bị thêm/xóa qua luồng KHÁC (vd APEX ghi thẳng CHAT_PARTICIPANTS) thì
+// cache có thể lệch tối đa PARTICIPANT_CACHE_TTL (60s): member mới chưa nhận event,
+// member vừa rời vẫn nhận. Khi thêm route đổi thành viên → nhớ gọi participantCache.delete(convId).
 const participantCache = new Map();   // conv_id(number) → { ausIds: number[], expiresAt: number }
 let   onlineCache      = null;        // { ausIds: number[], expiresAt: number } | null
 
@@ -49,11 +53,15 @@ async function getParticipants(convId) {
   return ausIds;
 }
 
-// Đẩy event tới tất cả thành viên của conv, trừ excludeAusId
+// Đẩy event tới tất cả thành viên của conv, trừ excludeAusId.
+// Ép kiểu số một chỗ: participant aus_id là NUMBER từ Oracle, còn excludeAusId
+// có thể tới dạng string từ req.body (APEX gửi JSON). So sánh number-vs-string
+// luôn !== → người gửi tự nhận lại tin của mình (self-echo). Number() chặn việc này.
 async function deliverToConv(convId, payload, excludeAusId) {
   const ausIds = await getParticipants(convId);
+  const exclude = Number(excludeAusId);
   for (const ausId of ausIds) {
-    if (ausId !== excludeAusId) deliverToUser(ausId, payload);
+    if (Number(ausId) !== exclude) deliverToUser(ausId, payload);
   }
 }
 
@@ -67,7 +75,35 @@ router.get('/conversations/:aus_id', async (req, res) => {
   try {
     const rows = await withConn(async conn => {
       const r = await conn.execute(
-        `SELECT
+        // parts:  đếm member_count + lấy "người kia" (1 lần/conv, local).
+        //         other_aus_id chỉ được DÙNG khi member_count <= 2 (DM / DOC 1-1) →
+        //         lúc đó có đúng 1 người kia nên MAX(...) = chính người đó.
+        // emp:    MATERIALIZE remote APP_USERS/EMPLOYEES MỘT lần cho tập "người kia",
+        //         thay vì join remote per-row (tránh N round-trip qua DBLINK — pitfall A7).
+        // unread: COUNT unread cho mọi conv trong 1 lần GROUP BY, thay scalar subquery/row.
+        `WITH parts AS (
+           SELECT p.conv_id,
+                  COUNT(*) AS member_count,
+                  MAX(CASE WHEN p.aus_id != :aus_id THEN p.aus_id END) AS other_aus_id
+           FROM   CHAT_PARTICIPANTS p
+           WHERE  p.conv_id IN (SELECT conv_id FROM CHAT_PARTICIPANTS WHERE aus_id = :aus_id)
+           GROUP  BY p.conv_id
+         ),
+         emp AS (
+           SELECT /*+ MATERIALIZE */ u.aus_id, NVL(e.full_name, 'Unknown') AS full_name
+           FROM   APP_USERS u
+           JOIN   EMPLOYEES e ON e.emp_id = u.emp_id
+           WHERE  u.aus_id IN (SELECT other_aus_id FROM parts WHERE other_aus_id IS NOT NULL)
+         ),
+         unread AS (
+           SELECT m.conv_id, COUNT(*) AS unread_count
+           FROM   CHAT_MESSENGERS m
+           JOIN   CHAT_PARTICIPANTS p ON p.conv_id = m.conv_id AND p.aus_id = :aus_id
+           WHERE  m.delete_date IS NULL
+             AND  m.msg_id > NVL(p.last_read_msg_id, 0)
+           GROUP  BY m.conv_id
+         )
+         SELECT
            c.conv_id,
            c.conv_type,
            c.doc_type,
@@ -80,39 +116,21 @@ router.get('/conversations/:aus_id', async (req, res) => {
            -- Tên hiển thị: CHANNEL (hoặc DOC nhóm >2 người) dùng name, còn lại dùng tên người kia
            CASE
              WHEN c.conv_type = 'CHANNEL' THEN c.name
-             WHEN c.conv_type = 'DOC' AND (SELECT COUNT(*) FROM CHAT_PARTICIPANTS p3 WHERE p3.conv_id = c.conv_id) > 2 THEN c.name
-             ELSE (SELECT NVL(e2.full_name, 'Unknown')
-                   FROM   CHAT_PARTICIPANTS p2
-                   JOIN   APP_USERS  u2 ON u2.aus_id = p2.aus_id
-                   JOIN   EMPLOYEES  e2 ON e2.emp_id = u2.emp_id
-                   WHERE  p2.conv_id = c.conv_id AND p2.aus_id != :aus_id
-                   FETCH FIRST 1 ROW ONLY)
+             WHEN c.conv_type = 'DOC' AND pt.member_count > 2 THEN c.name
+             ELSE em.full_name
            END AS display_name,
            -- aus_id của người kia (DM, hoặc DOC 1-1)
            CASE
-             WHEN c.conv_type = 'DM' THEN (SELECT p2.aus_id
-                             FROM   CHAT_PARTICIPANTS p2
-                             WHERE  p2.conv_id = c.conv_id AND p2.aus_id != :aus_id
-                             FETCH FIRST 1 ROW ONLY)
-             WHEN c.conv_type = 'DOC' AND (SELECT COUNT(*) FROM CHAT_PARTICIPANTS p3 WHERE p3.conv_id = c.conv_id) <= 2
-               THEN (SELECT p2.aus_id
-                     FROM   CHAT_PARTICIPANTS p2
-                     WHERE  p2.conv_id = c.conv_id AND p2.aus_id != :aus_id
-                     FETCH FIRST 1 ROW ONLY)
+             WHEN c.conv_type = 'DM' THEN pt.other_aus_id
+             WHEN c.conv_type = 'DOC' AND pt.member_count <= 2 THEN pt.other_aus_id
            END AS dm_partner_aus_id,
-           (SELECT COUNT(*)
-            FROM   CHAT_MESSENGERS m
-            WHERE  m.conv_id     = c.conv_id
-              AND  m.delete_date IS NULL
-              AND  m.msg_id      > NVL(p.last_read_msg_id, 0)
-           ) AS unread_count,
-           (SELECT COUNT(*)
-            FROM   CHAT_PARTICIPANTS p2
-            WHERE  p2.conv_id = c.conv_id
-           ) AS member_count
+           NVL(ur.unread_count, 0) AS unread_count,
+           pt.member_count          AS member_count
          FROM CHAT_CONVERSATIONS c
-         JOIN CHAT_PARTICIPANTS   p
-           ON p.conv_id = c.conv_id AND p.aus_id = :aus_id
+         JOIN CHAT_PARTICIPANTS   p  ON p.conv_id = c.conv_id AND p.aus_id = :aus_id
+         JOIN parts               pt ON pt.conv_id = c.conv_id
+         LEFT JOIN emp            em ON em.aus_id  = pt.other_aus_id
+         LEFT JOIN unread         ur ON ur.conv_id = c.conv_id
          WHERE ${docFilter}
          ORDER BY c.last_msg_date DESC NULLS LAST`,
         { aus_id: ausId },
@@ -135,16 +153,20 @@ router.get('/unread-summary/:aus_id', async (req, res) => {
   try {
     const rows = await withConn(async conn => {
       const r = await conn.execute(
-        `SELECT c.conv_id, c.doc_type, c.doc_no,
-                (SELECT COUNT(*)
-                 FROM   CHAT_MESSENGERS m
-                 WHERE  m.conv_id     = c.conv_id
-                   AND  m.delete_date IS NULL
-                   AND  m.msg_id      > NVL(p.last_read_msg_id, 0)
-                ) AS unread_count
+        // Gom unread của mọi conv trong 1 lần GROUP BY thay vì scalar subquery/row.
+        `WITH unread AS (
+           SELECT m.conv_id, COUNT(*) AS unread_count
+           FROM   CHAT_MESSENGERS m
+           JOIN   CHAT_PARTICIPANTS p ON p.conv_id = m.conv_id AND p.aus_id = :aus_id
+           WHERE  m.delete_date IS NULL
+             AND  m.msg_id > NVL(p.last_read_msg_id, 0)
+           GROUP  BY m.conv_id
+         )
+         SELECT c.conv_id, c.doc_type, c.doc_no,
+                NVL(ur.unread_count, 0) AS unread_count
          FROM   CHAT_CONVERSATIONS c
-         JOIN   CHAT_PARTICIPANTS  p
-           ON   p.conv_id = c.conv_id AND p.aus_id = :aus_id`,
+         JOIN   CHAT_PARTICIPANTS  p  ON p.conv_id = c.conv_id AND p.aus_id = :aus_id
+         LEFT JOIN unread          ur ON ur.conv_id = c.conv_id`,
         { aus_id: ausId },
         { outFormat: oracledb.OUT_FORMAT_OBJECT }
       );
@@ -193,7 +215,30 @@ router.get('/doc-conversations', async (req, res) => {
   try {
     const rows = await withConn(async conn => {
       const r = await conn.execute(
-        `SELECT
+        // Cấu trúc CTE giống /conversations (parts/emp/unread) — xem chú thích ở đó.
+        `WITH parts AS (
+           SELECT p.conv_id,
+                  COUNT(*) AS member_count,
+                  MAX(CASE WHEN p.aus_id != :aus_id THEN p.aus_id END) AS other_aus_id
+           FROM   CHAT_PARTICIPANTS p
+           WHERE  p.conv_id IN (SELECT conv_id FROM CHAT_PARTICIPANTS WHERE aus_id = :aus_id)
+           GROUP  BY p.conv_id
+         ),
+         emp AS (
+           SELECT /*+ MATERIALIZE */ u.aus_id, NVL(e.full_name, 'Unknown') AS full_name
+           FROM   APP_USERS u
+           JOIN   EMPLOYEES e ON e.emp_id = u.emp_id
+           WHERE  u.aus_id IN (SELECT other_aus_id FROM parts WHERE other_aus_id IS NOT NULL)
+         ),
+         unread AS (
+           SELECT m.conv_id, COUNT(*) AS unread_count
+           FROM   CHAT_MESSENGERS m
+           JOIN   CHAT_PARTICIPANTS p ON p.conv_id = m.conv_id AND p.aus_id = :aus_id
+           WHERE  m.delete_date IS NULL
+             AND  m.msg_id > NVL(p.last_read_msg_id, 0)
+           GROUP  BY m.conv_id
+         )
+         SELECT
            c.conv_id,
            c.conv_type,
            c.doc_type,
@@ -205,38 +250,20 @@ router.get('/doc-conversations', async (req, res) => {
            p.last_read_msg_id,
            CASE
              WHEN c.conv_type = 'CHANNEL' THEN c.name
-             WHEN c.conv_type = 'DOC' AND (SELECT COUNT(*) FROM CHAT_PARTICIPANTS p3 WHERE p3.conv_id = c.conv_id) > 2 THEN c.name
-             ELSE (SELECT NVL(e2.full_name, 'Unknown')
-                   FROM   CHAT_PARTICIPANTS p2
-                   JOIN   APP_USERS  u2 ON u2.aus_id = p2.aus_id
-                   JOIN   EMPLOYEES  e2 ON e2.emp_id = u2.emp_id
-                   WHERE  p2.conv_id = c.conv_id AND p2.aus_id != :aus_id
-                   FETCH FIRST 1 ROW ONLY)
+             WHEN c.conv_type = 'DOC' AND pt.member_count > 2 THEN c.name
+             ELSE em.full_name
            END AS display_name,
            CASE
-             WHEN c.conv_type = 'DM' THEN (SELECT p2.aus_id
-                             FROM   CHAT_PARTICIPANTS p2
-                             WHERE  p2.conv_id = c.conv_id AND p2.aus_id != :aus_id
-                             FETCH FIRST 1 ROW ONLY)
-             WHEN c.conv_type = 'DOC' AND (SELECT COUNT(*) FROM CHAT_PARTICIPANTS p3 WHERE p3.conv_id = c.conv_id) <= 2
-               THEN (SELECT p2.aus_id
-                     FROM   CHAT_PARTICIPANTS p2
-                     WHERE  p2.conv_id = c.conv_id AND p2.aus_id != :aus_id
-                     FETCH FIRST 1 ROW ONLY)
+             WHEN c.conv_type = 'DM' THEN pt.other_aus_id
+             WHEN c.conv_type = 'DOC' AND pt.member_count <= 2 THEN pt.other_aus_id
            END AS dm_partner_aus_id,
-           (SELECT COUNT(*)
-            FROM   CHAT_MESSENGERS m
-            WHERE  m.conv_id     = c.conv_id
-              AND  m.delete_date IS NULL
-              AND  m.msg_id      > NVL(p.last_read_msg_id, 0)
-           ) AS unread_count,
-           (SELECT COUNT(*)
-            FROM   CHAT_PARTICIPANTS p2
-            WHERE  p2.conv_id = c.conv_id
-           ) AS member_count
+           NVL(ur.unread_count, 0) AS unread_count,
+           pt.member_count          AS member_count
          FROM CHAT_CONVERSATIONS c
-         JOIN CHAT_PARTICIPANTS   p
-           ON p.conv_id = c.conv_id AND p.aus_id = :aus_id
+         JOIN CHAT_PARTICIPANTS   p  ON p.conv_id = c.conv_id AND p.aus_id = :aus_id
+         JOIN parts               pt ON pt.conv_id = c.conv_id
+         LEFT JOIN emp            em ON em.aus_id  = pt.other_aus_id
+         LEFT JOIN unread         ur ON ur.conv_id = c.conv_id
          WHERE c.doc_type = :doc_type
            AND c.doc_no   = :doc_no
          ORDER BY c.last_msg_date DESC NULLS LAST`,
@@ -742,7 +769,7 @@ router.get('/online', async (req, res) => {
     });
     const ausIds = rows.map(r => Number(r.AUS_ID));
     onlineCache = { ausIds, expiresAt: Date.now() + ONLINE_CACHE_TTL };
-    res.json({ online: ausIds });
+    res.json({ online: ausIds, cached: false });
   } catch (err) {
     console.error('[Chat] GET /online:', err.message);
     res.status(500).json({ error: err.message });

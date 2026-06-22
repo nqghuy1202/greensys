@@ -6,6 +6,8 @@
     // ── SharedWorker ──────────────────────────────────────────────────────────
 
     var _port = null;
+    var _pingTimer = null;
+    var _notifDebounce = null;
 
     function initWorker(sseUrl) {
         var workerUrl = (window.APP_FILES || '') + 'sse-worker.js';
@@ -31,8 +33,9 @@
                     }
                 });
             } else if (msg.type === 'heartbeat_tick') {
-                // Worker chọn tab này gửi heartbeat chu kỳ này
-                apex.server.process('chatHeartbeat', {});
+                // Worker chọn tab này gửi heartbeat chu kỳ này.
+                // Gửi x01 = aus_id vì :G_AUS_ID không tin cậy trong Application Process.
+                apex.server.process('chatHeartbeat', { x01: $v('P0_AUS_ID') });
             } else if (msg.type === 'sse_error') {
                 console.error('[SSE] connection error:', msg.reason, msg);
             } else {
@@ -43,11 +46,11 @@
         _port.start();
         _port.postMessage({ type: 'init', sseUrl: sseUrl });
 
-        // Heartbeat đầu tiên ngay lập tức, các lần sau do worker điều phối
-        apex.server.process('chatHeartbeat', {});
+        // Heartbeat (kể cả lần đầu) do worker điều phối qua 'heartbeat_tick' — chỉ 1
+        // tab gửi/chu kỳ, tránh mỗi tab mở lại bắn 1 heartbeat thừa.
 
         // Ping worker định kỳ để worker biết tab này còn sống
-        setInterval(function () { _port.postMessage({ type: 'ping' }); }, 25000);
+        _pingTimer = setInterval(function () { _port.postMessage({ type: 'ping' }); }, 25000);
     }
 
     // ── Notification badge ────────────────────────────────────────────────────
@@ -60,6 +63,12 @@
         } else {
             $badge.hide();
         }
+    }
+
+    // Gộp các event 'notification' dồn dập → 1 lần gọi notificationCount (giảm AJAX).
+    function scheduleNotifCount() {
+        if (_notifDebounce) clearTimeout(_notifDebounce);
+        _notifDebounce = setTimeout(fetchNotifCount, 400);
     }
 
     function fetchNotifCount() {
@@ -108,7 +117,7 @@
 
     function handleEvent(data) {
         if (data.type === 'notification') {
-            fetchNotifCount();
+            scheduleNotifCount();
             $(document).trigger('apex:notifEvent', [data]);
         } else if (data.type === 'message' || data.type === 'typing' ||
             data.type === 'typing_stop' || data.type === 'read') {
@@ -130,6 +139,12 @@
         fetchSseUrl(function (sseUrl) {
             if (!sseUrl) return; // không lấy được URL → bỏ qua real-time, badge vẫn hoạt động qua fetchNotifCount
             initWorker(sseUrl);
+        });
+
+        // Dọn timer khi rời trang (worker tự prune port chết, đây chỉ là dọn sạch phía tab)
+        window.addEventListener('beforeunload', function () {
+            if (_pingTimer) clearInterval(_pingTimer);
+            if (_notifDebounce) clearTimeout(_notifDebounce);
         });
     });
 })();
