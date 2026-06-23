@@ -67,7 +67,9 @@
       "PowerShell(Head *)",
       "Bash(git push *)",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Read(//c/chat-design/chat-erp/**)",
+      "Read(//c/chat-design/**)"
     ]
   },
   "enabledPlugins": {
