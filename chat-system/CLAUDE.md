@@ -133,7 +133,7 @@ tới port đã đóng không throw, nên luôn dùng tab đầu tiên có thể
 trả về) để chặn 2 tab cùng gửi `init` gần như đồng thời tạo 2 `EventSource` (cái cũ orphan, không
 bao giờ `close()`).
 
-**Deploy prerequisite:** `window.APP_FILES = '#APP_FILES#'` phải có trong **Page 0 FGVD** (apex.env.APP_FILES = undefined trong APEX 24.2). Worker URL = `window.APP_FILES + 'sse-worker.js'`.
+**Worker URL — không cần Page 0:** `workerScriptUrl()` tự dò thẻ `<script src=".../global.js">` (URL đã được APEX resolve đúng) rồi đổi tên → `sse-worker.js` cùng thư mục. KHÔNG còn cần `window.APP_FILES = '#APP_FILES#'` ở Page 0 FGVD (substitution không chạy trong file tĩnh; `apex.env.APP_FILES = undefined` ở APEX 24.2). Fallback khi không tìm thấy script tag: resolve `sse-worker.js` tương đối so với `window.location.href`.
 
 `sseToken`, `chatHeartbeat`, `notificationCount`, `getUrlNodeJs` đều là **Application Process**
 (không pageId) vì global.js chạy trên mọi page. `:G_AUS_ID` không tin cậy trong Application Process

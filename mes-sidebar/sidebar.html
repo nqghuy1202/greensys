@@ -1,0 +1,109 @@
+<!-- ============ MES Control Tower — Left Sidebar ============ -->
+<aside class="mes-sidebar">
+
+  <!-- ---------- Production Health ---------- -->
+  <section class="mes-panel">
+    <h2 class="mes-panel__title">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+        <path d="M3 12h4l2-7 4 14 2-7h6" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Production Health
+    </h2>
+
+    <ul class="health-list">
+      <li class="health-item">
+        <div class="health-item__row">
+          <span class="health-item__label">Phối trộn</span>
+          <span class="health-item__value">65%</span>
+        </div>
+        <div class="bar"><span class="bar__fill" style="width:65%"></span></div>
+      </li>
+
+      <li class="health-item is-danger">
+        <div class="health-item__row">
+          <span class="health-item__label">Lọc tinh</span>
+          <span class="health-item__value">100%</span>
+        </div>
+        <div class="bar"><span class="bar__fill" style="width:100%"></span></div>
+      </li>
+
+      <li class="health-item is-warning">
+        <div class="health-item__row">
+          <span class="health-item__label">Thanh trùng</span>
+          <span class="health-item__value">85%</span>
+        </div>
+        <div class="bar"><span class="bar__fill" style="width:85%"></span></div>
+      </li>
+
+      <li class="health-item">
+        <div class="health-item__row">
+          <span class="health-item__label">Ú chượp</span>
+          <span class="health-item__value">40%</span>
+        </div>
+        <div class="bar"><span class="bar__fill" style="width:40%"></span></div>
+      </li>
+
+      <li class="health-item">
+        <div class="health-item__row">
+          <span class="health-item__label">Chiết rót</span>
+          <span class="health-item__value">75%</span>
+        </div>
+        <div class="bar"><span class="bar__fill" style="width:75%"></span></div>
+      </li>
+
+      <li class="health-item">
+        <div class="health-item__row">
+          <span class="health-item__label">Đóng gói</span>
+          <span class="health-item__value">50%</span>
+        </div>
+        <div class="bar"><span class="bar__fill" style="width:50%"></span></div>
+      </li>
+    </ul>
+  </section>
+
+  <!-- ---------- Alert Center ---------- -->
+  <section class="mes-panel">
+    <h2 class="mes-panel__title mes-panel__title--alert">
+      <span class="mes-panel__title-left">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="M12 7v6M12 16.5v.5" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        Alert Center
+      </span>
+      <span class="alert-badge">5</span>
+    </h2>
+
+    <ul class="alert-list">
+      <li class="alert-card alert-card--danger">
+        <h3 class="alert-card__title">2 Orders Delayed</h3>
+        <p class="alert-card__desc">PO240608, PO240612 at risk of missing dispatch.</p>
+      </li>
+
+      <li class="alert-card alert-card--danger">
+        <h3 class="alert-card__title">Capacity Overload</h3>
+        <p class="alert-card__desc">Pasteurization P-102 util &gt; 100%.</p>
+      </li>
+
+      <li class="alert-card alert-card--warning">
+        <h3 class="alert-card__title">Material Shortage</h3>
+        <p class="alert-card__desc">Packaging for PO240605 low stock.</p>
+      </li>
+    </ul>
+  </section>
+
+  <!-- ---------- Footer action ---------- -->
+  <div class="mes-sidebar__footer">
+    <button type="button" class="aps-btn">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+        <path d="M5 3l1.5 3.5L10 8 6.5 9.5 5 13 3.5 9.5 0 8l3.5-1.5L5 3zM17 9l1 2.5
+                 2.5 1-2.5 1L17 16l-1-2.5L13.5 12.5 16 11.5 17 9z"
+              transform="translate(2 2)" fill="currentColor"/>
+      </svg>
+      APS Optimizer
+    </button>
+  </div>
+
+</aside>

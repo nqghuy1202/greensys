@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MES Sidebar Demo</title>
+  <link rel="stylesheet" href="sidebar.css">
+  <style>
+    body { margin: 0; background: #EEF1F4; height: 100vh; }
+    .demo-wrap { height: 100vh; display: flex; }
+  </style>
+</head>
+<body>
+  <div class="demo-wrap">
+    <!-- dán nội dung sidebar.html vào đây -->
+    <div id="sidebar-mount"></div>
+  </div>
+  <script>
+    fetch('sidebar.html').then(r => r.text())
+      .then(html => document.getElementById('sidebar-mount').outerHTML = html);
+  </script>
+</body>
+</html>

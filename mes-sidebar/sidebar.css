@@ -1,0 +1,167 @@
+/* ============ MES Control Tower — Left Sidebar ============ */
+/* Map vào design token hệ thống ERP, có fallback */
+.mes-sidebar {
+  --primary:   var(--primary-color, #15674C);
+  --surface:   var(--white-color, #FFFFFF);
+  --bg:        #F7F8FA;
+  --text:      #1F2937;
+  --text-soft: #6B7280;
+  --border:    var(--border-color, #E6E6E6);
+  --track:     #E9EDF1;
+
+  --blue:      #1D4ED8;   /* default bar / accent */
+  --danger:    var(--red-color, #D81F25);
+  --warning:   var(--orange-color, #ECA12B);
+
+  --danger-bg:  #FEF2F2;
+  --warning-bg: #FFFBEB;
+
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  height: 100%;
+  padding: 18px 16px 0;
+  gap: 22px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--text);
+  overflow-y: auto;
+}
+.mes-sidebar *,
+.mes-sidebar *::before,
+.mes-sidebar *::after { box-sizing: border-box; }
+
+/* ---------- Panel ---------- */
+.mes-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+.mes-panel__title svg { flex: none; color: var(--text-soft); }
+
+.mes-panel__title--alert { justify-content: space-between; }
+.mes-panel__title--alert .mes-panel__title-left {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--danger);
+}
+.mes-panel__title--alert .mes-panel__title-left svg { color: var(--danger); }
+
+.alert-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: #EEF1F4;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* ---------- Production Health ---------- */
+.health-list { list-style: none; margin: 0; padding: 0; }
+.health-item { margin-bottom: 16px; }
+.health-item:last-child { margin-bottom: 0; }
+
+.health-item__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 7px;
+}
+.health-item__label { font-size: 14px; color: var(--text); }
+.health-item__value { font-size: 13px; font-weight: 600; color: var(--text); }
+
+.bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--track);
+  overflow: hidden;
+}
+.bar__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+  transition: width .3s ease;
+}
+
+/* state colors */
+.health-item.is-danger  .health-item__label,
+.health-item.is-danger  .health-item__value { color: var(--danger); }
+.health-item.is-danger  .bar__fill { background: var(--danger); }
+
+.health-item.is-warning .bar__fill { background: var(--warning); }
+
+/* ---------- Alert Center ---------- */
+.alert-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+
+.alert-card {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  position: relative;
+}
+.alert-card::before {
+  content: "";
+  position: absolute;
+  left: 12px; top: 15px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+}
+.alert-card__title {
+  margin: 0 0 4px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.alert-card__desc {
+  margin: 0 0 0 16px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
+
+.alert-card--danger  { background: var(--danger-bg);  border-color: #FBD5D5; }
+.alert-card--danger::before  { background: var(--danger); }
+
+.alert-card--warning { background: var(--warning-bg); border-color: #FCE8C2; }
+.alert-card--warning::before { background: var(--warning); }
+
+/* ---------- Footer ---------- */
+.mes-sidebar__footer {
+  margin-top: auto;
+  position: sticky;
+  bottom: 0;
+  padding: 16px 0;
+  background: var(--surface);
+}
+.aps-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 13px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #1B4D8A;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s ease, transform .05s ease;
+}
+.aps-btn:hover  { background: #163F73; }
+.aps-btn:active { transform: translateY(1px); }
+.aps-btn svg { flex: none; }

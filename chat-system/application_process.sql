@@ -3,16 +3,25 @@ declare
     l_aus_id number;
 begin
     owa_util.mime_header('application/json', true, 'UTF-8');
-    -- :G_AUS_ID không tin cậy trong Application Process → ưu tiên g_x01 (global.js gửi
-    -- x01 = $v('P0_AUS_ID')), fallback :G_AUS_ID. Convert trong begin để lỗi rơi vào WHEN OTHERS.
-    l_aus_id := coalesce(nullif(to_number(apex_application.g_x01), 0), to_number(:G_AUS_ID));
-    if l_aus_id is null or l_aus_id = 0 then
+    -- aus_id resolve server-side qua :APP_USER (tin cậy + an toàn, không phụ thuộc
+    -- :G_AUS_ID hay g_x01 do client gửi). global.js không gửi x01.
+    if :APP_USER is null or :APP_USER in ('nobody','NOBODY') then
         apex_json.open_object;
         apex_json.write('state','skip');
         apex_json.close_object;
         return;
-    --   HTP.p('{"status":"skip"}'); RETURN;
     end if;
+    begin
+        select aus_id into l_aus_id
+          from app_users
+         where lower(user_name) = lower(:APP_USER);
+    exception
+        when no_data_found then
+            apex_json.open_object;
+            apex_json.write('state','skip');
+            apex_json.close_object;
+            return;
+    end;
     merge into chat_user_online o
     using (select l_aus_id as aus_id from dual) src
       on  (o.aus_id = src.aus_id)
@@ -145,16 +154,22 @@ declare
     end;
 begin
     owa_util.mime_header('text/plain', true, 'UTF-8');
-    -- :G_AUS_ID không tin cậy trong Application Process → ưu tiên g_x01 (global.js gửi
-    -- x01 = $v('P0_AUS_ID')), fallback :G_AUS_ID. Convert đặt trong begin để exception
-    -- (nếu g_x01 phi số) rơi vào WHEN OTHERS thay vì ném ở DECLARE.
-    l_aus_id := coalesce(nullif(to_number(apex_application.g_x01), 0), to_number(:G_AUS_ID));
-    if l_aus_id is null or l_aus_id = 0 then
-        htp.p(''); return;
-    end if;
+    -- aus_id resolve server-side qua :APP_USER — token mang đúng aus_id thật, Node verify
+    -- và đăng ký SSE đúng key. global.js không gửi x01.
     if l_secret is null then
         htp.p(''); return;
     end if;
+    if :APP_USER is null or :APP_USER in ('nobody','NOBODY') then
+        htp.p(''); return;
+    end if;
+    begin
+        select aus_id into l_aus_id
+          from app_users
+         where lower(user_name) = lower(:APP_USER);
+    exception
+        when no_data_found then
+            htp.p(''); return;
+    end;
     l_exp := floor(
       (cast(sys_extract_utc(systimestamp) as date) - date '1970-01-01') * 86400
     ) + 120;

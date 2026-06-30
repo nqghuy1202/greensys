@@ -69,7 +69,8 @@
       "Bash(git add *)",
       "Bash(git commit *)",
       "Read(//c/chat-design/chat-erp/**)",
-      "Read(//c/chat-design/**)"
+      "Read(//c/chat-design/**)",
+      "Bash(python3 _bmad/scripts/resolve_customization.py --skill .claude/skills/bmad-investigate --key workflow)"
     ]
   },
   "enabledPlugins": {
