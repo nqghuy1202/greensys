@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # nodejs-apex-oracle
 
-Node.js 22 middleware (Server B `172.25.10.38:3410`) bridging Oracle DB (Server A) ↔ Oracle APEX 24.2 browser clients.
+Node.js 22 middleware (Server B `172.25.10.50:3410`) bridging Oracle DB (Server A) ↔ Oracle APEX 24.2 browser clients.
+
+> **IP Server B = `172.25.10.50`** (xác minh `hostname -I` + listener). Docs cũ ghi `172.25.10.38` là SAI — đừng dùng `.38`. `DB_CONNECTION_STRING` trỏ DB ở `172.25.10.18` (máy khác).
 
 ## Kiến trúc hệ thống
 
@@ -17,7 +19,7 @@ Server A — Oracle APEX 24.2 / ORDS
   │  CQN callback TCP (Oracle → Server B :3141)
   │  TCP:1521 oracledb pool
   ▼
-Server B — Node.js 22 (172.25.10.38:3410)
+Server B — Node.js 22 (172.25.10.50:3410)
   chat-server/server.js
 ```
 
@@ -63,8 +65,17 @@ curl http://localhost:3410/health
 **Test DB/CQN (chạy từ `chat-server/`):**
 ```bash
 npm run test:connection    # safe khi server đang chạy
-npm run test:cqn           # dừng server trước (tranh CQN_PORT 3141)
+npm run test:cqn           # dừng server trước (tranh CQN_PORT 3411)
 ```
+
+### CQN — mô hình vận hành & recovery (quan trọng)
+
+CQN dùng **2 kênh**: control (outbound Node→Oracle `1521`, để subscribe) và **callback (inbound Oracle→Server B `CQN_PORT=3411`**, để giao notification). Subscribe có thể thành công mà notification vẫn KHÔNG tới nếu kênh callback inbound bị chặn.
+
+- **`PORT=3410` (HTTP), `CQN_PORT=3411`, `CQN_HOST=172.25.10.50`** — phải khác nhau; thick mode bind listener trên `CQN_HOST:CQN_PORT`.
+- **Recovery = thoát process, KHÔNG retry in-process** (`cqn.js` `fatalRestart` → `process.exit(1)`): OCI thick mode giữ notification listener suốt đời process, re-subscribe trong cùng process luôn `ORA-24912`/`NJS-003` loop. Chỉ pm2 restart (process mới) mới nhả port. ⇒ **luôn fork mode, 1 instance** — cluster sẽ tranh bind `CQN_PORT`.
+- **Bẫy chẩn đoán:** `curl /api/notify/<aus_id>` chạy (HTTP nội bộ → SSE, bypass CQN) KHÔNG chứng minh CQN. Test CQN thật = `UPDATE/INSERT user_notifications` rồi xem log `[Events] notification`. Test reachability từ DB: `utl_tcp.open_connection('172.25.10.50', 3411)`.
+- Registration sống phải có callback `HOST=172.25.10.50 PORT=3411` trong `user_change_notification_regs`. Reg trỏ IP khác = mồ côi (xoá bằng `DBMS_CQ_NOTIFICATION.DEREGISTER`, cần DBA grant EXECUTE cho DEV24).
 
 ## Feature Status
 

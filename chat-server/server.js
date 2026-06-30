@@ -40,6 +40,9 @@ async function initDB() {
         user:          process.env.DB_USER,
         password:      process.env.DB_PASSWORD,
         connectString: process.env.DB_CONNECTION_STRING,
+        events:        true,   // BẮT BUỘC: thick mode quyết định events-mode của OCI env
+                               // theo pool/connection ĐẦU TIÊN. Pool tạo trước startCQN,
+                               // thiếu cờ này → CQN listener fail ORA-24912 (bọc NJS-003).
         poolMin:       Number(process.env.DB_POOL_MIN)       || 2,
         poolMax:       Number(process.env.DB_POOL_MAX)       || 10,
         poolIncrement: Number(process.env.DB_POOL_INCREMENT) || 1,

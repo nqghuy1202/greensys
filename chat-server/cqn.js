@@ -3,22 +3,28 @@
 const oracledb = require('oracledb');
 
 const SUBSCR_NAME        = 'notifications_watcher';
-const RETRY_INTERVAL_MS  = 15_000;
 const HEALTH_CHECK_MS    = 5 * 60_000; // kiểm tra subscription mỗi 5 phút
 
 let _emitFn      = null;
 let _cqnConn     = null;
 let _healthTimer = null;
-let _regId       = null;       // regId của subscription hiện tại (dùng cho health check)
-let _restarting  = false;      // guard chống lên lịch startCQN trùng (error + health cùng fire)
+let _regId       = null;       // regId của subscription hiện tại (chỉ để log)
+let _exiting     = false;      // guard chống gọi exit nhiều lần (error + health cùng fire)
 const rowidCache = new Map(); // rowid → aus_id
 
-// Lên lịch restart CQN đúng MỘT lần — chặn việc on('error') và health-check
-// cùng kích hoạt setTimeout(startCQN) song song.
-function scheduleRestart(delayMs) {
-    if (_restarting) return;
-    _restarting = true;
-    setTimeout(() => { _restarting = false; startCQN(_emitFn); }, delayMs);
+// Phục hồi CQN = THOÁT process cho pm2 restart sạch — KHÔNG retry in-process.
+// Lý do (H2, đã xác minh bằng ss): OCI thick mode giữ notification listener trên
+// CQN_PORT ở cấp process suốt đời process; close connection KHÔNG nhả port. Vì vậy
+// subscribe() lại trong cùng process luôn ORA-24912 "Listen failed" (bọc NJS-003/
+// DPI-1010) → loop vô hạn. Chỉ process mới (pm2 restart-delay 3000) mới giải phóng
+// port → subscribe lần đầu thành công + re-register callback đúng CQN_HOST.
+// stopCQN() best-effort trước khi thoát để unsubscribe, tránh tích lũy registration mồ côi.
+function fatalRestart(reason) {
+    if (_exiting) return;
+    _exiting = true;
+    console.error('[CQN] Fatal: %s — exiting(1) for clean pm2 restart', reason);
+    setTimeout(() => process.exit(1), 5000).unref();   // an toàn nếu stopCQN treo
+    stopCQN().catch(() => {}).finally(() => process.exit(1));
 }
 
 // ──────────────────────────────────────────────
@@ -115,9 +121,7 @@ async function handleFullScan() {
 // ──────────────────────────────────────────────
 function onMessage(message) {
     if (message.type === oracledb.SUBSCR_EVENT_TYPE_DEREG) {
-        console.warn('[CQN] Subscription deregistered — reconnecting in %ds', RETRY_INTERVAL_MS / 1000);
-        _regId = null;
-        scheduleRestart(RETRY_INTERVAL_MS);
+        fatalRestart('subscription deregistered (DEREG event)');
         return;
     }
 
@@ -149,29 +153,32 @@ function onMessage(message) {
 // ──────────────────────────────────────────────
 // Start CQN (auto-retry loop)
 // ──────────────────────────────────────────────
-// Kiểm tra subscription còn sống trong Oracle không
+// Kiểm tra subscription còn sống trong Oracle không.
+// KHÔNG so theo regid: sub.regId (node-oracledb) không khớp tin cậy với cột REGID
+// (H5 — đã xác minh: bảng có 35104 trong khi process log 35112) → so regid cứng gây
+// false "gone" → tự restart 5 phút/lần. Thay vào đó match theo cái THỰC SỰ có nghĩa:
+// "Oracle có registration nào trên USER_NOTIFICATIONS sẽ giao notification về ĐÚNG
+// listener của ta (CQN_HOST:CQN_PORT) không". callback có dạng:
+//   net8://(ADDRESS=(PROTOCOL=tcp)(HOST=172.25.10.50)(PORT=3411))
 async function checkSubscriptionHealth() {
-    // Chưa có regId (subscription chưa đăng ký xong) → bỏ qua lần check này
+    // Subscription chưa đăng ký xong → bỏ qua lần check này
     if (_regId == null) return;
 
     let conn;
     try {
         conn = await oracledb.getConnection();
-        // USER_CHANGE_NOTIFICATION_REGS khóa theo REGID — KHÔNG có cột subscription_name.
-        // regId lấy từ kết quả conn.subscribe() lúc đăng ký.
         const result = await conn.execute(
             `SELECT COUNT(*) AS cnt FROM user_change_notification_regs
-             WHERE regid = :regid`,
-            { regid: _regId },
+             WHERE UPPER(table_name) LIKE '%USER_NOTIFICATIONS'
+               AND callback LIKE '%HOST=' || :host || '%'
+               AND callback LIKE '%PORT=' || :port || '%'`,
+            { host: process.env.CQN_HOST, port: String(process.env.CQN_PORT) },
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
         const alive = result.rows[0].CNT > 0;
         if (!alive) {
-            console.warn('[CQN] Health check: subscription gone — restarting');
-            if (_healthTimer) { clearInterval(_healthTimer); _healthTimer = null; }
-            _regId = null;
-            if (_cqnConn) { _cqnConn.close().catch(() => {}); _cqnConn = null; }
-            scheduleRestart(1000);
+            fatalRestart('health-check: no registration for ' +
+                process.env.CQN_HOST + ':' + process.env.CQN_PORT);
         }
     } catch (err) {
         console.error('[CQN] Health check error:', err.message);
@@ -211,26 +218,20 @@ async function startCQN(emitFn) {
         _healthTimer = setInterval(checkSubscriptionHealth, HEALTH_CHECK_MS);
 
         _cqnConn.on('error', (err) => {
-            console.error('[CQN] Connection error:', err.message);
-            if (_healthTimer) { clearInterval(_healthTimer); _healthTimer = null; }
-            _regId = null;
-            _cqnConn.close().catch(() => {});
-            _cqnConn = null;
-            scheduleRestart(RETRY_INTERVAL_MS);
+            fatalRestart('connection error: ' + err.message);
         });
 
     } catch (err) {
-        console.error('[CQN] Startup error:', err.message);
-        _regId = null;
-        if (_cqnConn) { _cqnConn.close().catch(() => {}); _cqnConn = null; }
-        console.log('[CQN] Retrying in %ds...', RETRY_INTERVAL_MS / 1000);
-        scheduleRestart(RETRY_INTERVAL_MS);
+        fatalRestart('startup error: ' + err.message);
     }
 }
 
 // Đóng sạch CQN khi shutdown (pm2 restart / SIGTERM) — tránh để lại connection
 // + listener TCP treo trên CQN_PORT.
 async function stopCQN() {
+    // stopCQN chỉ được gọi ở đường terminal (fatalRestart hoặc shutdown SIGTERM/SIGINT).
+    // Set _exiting để chặn fatalRestart đua khi đóng _cqnConn làm bắn 'error' lúc shutdown.
+    _exiting = true;
     if (_healthTimer) { clearInterval(_healthTimer); _healthTimer = null; }
     _regId = null;
     if (_cqnConn) {

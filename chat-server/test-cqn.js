@@ -61,7 +61,7 @@
       });
 
     } catch (err) {
-      if (err.message !== 'SIGINT') console.error('[Error]', err.message);
+      if (err.message !== 'SIGINT') console.error('[Error]', err);
     } finally {
       if (cqnConn) {
         try { await cqnConn.unsubscribe('test_watcher'); } catch {}

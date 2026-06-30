@@ -129,6 +129,16 @@ apex.server.process('chatSend', data, { dataType: 'json', ... });  // không có
 
 oracledb opens a TCP listener on `CQN_PORT`. If `CQN_PORT === PORT` → `EADDRINUSE`. Keep `PORT=3410`, `CQN_PORT=3141`.
 
+### ORA-24912 (bọc thành NJS-003) — pool phải bật `events: true`
+
+Triệu chứng: pm2 loop vô hạn `[CQN] Connected. Registering subscription...` → `[CQN] Startup error: NJS-003: invalid or closed connection` → `Retrying in 15s`, **không bao giờ** in `Subscription active`. Chạy `test-cqn.js` standalone (in full error) lại thấy mã gốc là `ORA-24912: Listener thread failed. Listen failed.`
+
+Nguyên nhân: trong **thick mode**, `events` là thuộc tính cấp **OCI environment**, quyết định bởi pool/connection **tạo đầu tiên**. `server.js` tạo `createPool()` TRƯỚC `startCQN()`. Nếu pool thiếu `events: true` → environment ở non-events mode → CQN connection (dù tự set `events:true`) không mở được listener trên `CQN_PORT` → `ORA-24912`.
+
+Fix: thêm `events: true` vào `oracledb.createPool({...})` trong `server.js`. (test-cqn.js chạy được vì không tạo pool — environment vào events mode đúng.)
+
+Chỉ chạy **1 instance, fork mode** — không cluster: nhiều worker sẽ tranh bind `CQN_PORT`.
+
 ### IP address typo — 172 not 127
 
 `DB_CONNECTION_STRING` and `CQN_HOST` use `172.25.x.x`. Typing `127.25.x.x` causes `ORA-12514` (DB) or silent connection failure (CQN).

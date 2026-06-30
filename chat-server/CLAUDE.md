@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # Chat Server — Node.js Backend
 
-Node.js 22 middleware chạy trên **Server B** (`172.25.10.38:3410`). Nhận request từ Oracle APEX qua UTL_HTTP, đẩy event real-time về browser qua long-poll, duy trì Oracle CQN subscription.
+Node.js 22 middleware chạy trên **Server B** (`172.25.10.50:3410`). Nhận request từ Oracle APEX qua UTL_HTTP, đẩy event real-time về browser qua SSE, duy trì Oracle CQN subscription.
 
 ## Files
 
@@ -62,8 +62,8 @@ curl http://localhost:3410/api/events/<aus_id>
 | `DB_PASSWORD` | — | |
 | `DB_CONNECTION_STRING` | `172.25.10.18:1521/pdbgc19c` | **172**, không phải 127 |
 | `PORT` | `3410` | HTTP server |
-| `CQN_HOST` | `172.25.10.38` | Server B IP — **172**, không phải 127 |
-| `CQN_PORT` | `3141` | Phải khác PORT |
+| `CQN_HOST` | `172.25.10.50` | Server B IP thật (KHÔNG phải .38 trong docs cũ); Oracle gọi callback về đây |
+| `CQN_PORT` | `3411` | Phải khác PORT; cần Server A → Server B:3411 (inbound) mở |
 | `DB_POOL_MIN/MAX/INCREMENT` | `2/10/1` | |
 
 ## HTTP Endpoints
