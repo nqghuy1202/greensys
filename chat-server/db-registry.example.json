@@ -1,0 +1,17 @@
+[
+  {
+    "key": "dev24",
+    "primary": true,
+    "user": "DEV24",
+    "password": "dev24gic001",
+    "connectString": "172.25.10.18:1521/pdbgc19c",
+    "cqn": true
+  },
+  {
+    "key": "tnc",
+    "user": "TNC",
+    "password": "tncgic001",
+    "connectString": "172.25.10.18:1521/pdbgc19c",
+    "cqn": true
+  }
+]

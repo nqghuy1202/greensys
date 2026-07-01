@@ -4,11 +4,13 @@
  * Test tool cho /api/sse endpoint.
  *
  * Dùng:
- *   node test-sse.js <aus_id> [host]
+ *   node test-sse.js <aus_id> [dbKey] [host]
  *
  * Ví dụ (nội bộ Server B):
- *   node test-sse.js 123
- *   node test-sse.js 123 https://chattest.erp100.vn
+ *   node test-sse.js 123                 # dbKey mặc định 'default'
+ *   node test-sse.js 123 dev24           # namespace theo schema dev24
+ *   node test-sse.js 123 tnc https://chattest.erp100.vn
+ *   node test-sse.js 123 https://chattest.erp100.vn   # (cũ) arg URL → host, dbKey='default'
  *
  * Script tự mint token hợp lệ từ secret trong .env (hoặc SSE_SECRET env var),
  * mở kết nối SSE và in mọi event nhận được.
@@ -23,7 +25,11 @@ const { URL } = require('url');
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const AUS_ID = Number(process.argv[2]);
-const HOST   = process.argv[3] || `http://localhost:${process.env.PORT || 3410}`;
+// arg3 có thể là dbKey hoặc host (URL). Nếu là URL → giữ tương thích cũ: dbKey='default'.
+const arg3 = process.argv[3];
+const arg3IsUrl = arg3 && /^https?:\/\//i.test(arg3);
+const DB_KEY = arg3IsUrl ? 'default' : (arg3 || 'default');
+const HOST   = (arg3IsUrl ? arg3 : process.argv[4]) || `http://localhost:${process.env.PORT || 3410}`;
 const SECRET = process.env.G_SSE_SECRET || process.env.SSE_SECRET || '';
 
 if (!AUS_ID || isNaN(AUS_ID)) {
@@ -39,22 +45,24 @@ if (!SECRET) {
 
 // ── Mint token ────────────────────────────────────────────────────────────────
 
-function mintToken(ausId, ttlSeconds = 300) {
+function mintToken(ausId, dbKey, ttlSeconds = 300) {
     const exp  = Math.floor(Date.now() / 1000) + ttlSeconds;
-    const body = Buffer.from(`${ausId}|${exp}`).toString('base64url');
+    // body 3-phần khớp verifyToken mới: <dbKey>|<ausId>|<exp>
+    const body = Buffer.from(`${dbKey}|${ausId}|${exp}`).toString('base64url');
     const sig  = crypto.createHmac('sha256', SECRET).update(body).digest('base64url');
     return `${body}.${sig}`;
 }
 
 // ── Connect SSE ───────────────────────────────────────────────────────────────
 
-const token   = mintToken(AUS_ID);
+const token   = mintToken(AUS_ID, DB_KEY);
 const sseUrl  = new URL(`/api/sse?token=${encodeURIComponent(token)}`, HOST);
 const lib     = sseUrl.protocol === 'https:' ? https : http;
 
 console.log('─'.repeat(60));
 console.log('[TEST] SSE Diagnostic Tool');
 console.log(`[TEST] aus_id  : ${AUS_ID}`);
+console.log(`[TEST] dbKey   : ${DB_KEY}`);
 console.log(`[TEST] endpoint: ${sseUrl.origin}/api/sse`);
 console.log(`[TEST] token   : ${token.slice(0, 20)}...`);
 console.log('─'.repeat(60));

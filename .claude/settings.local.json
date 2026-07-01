@@ -71,7 +71,11 @@
       "Read(//c/chat-design/chat-erp/**)",
       "Read(//c/chat-design/**)",
       "Bash(python3 _bmad/scripts/resolve_customization.py --skill .claude/skills/bmad-investigate --key workflow)",
-      "Bash(python3 _bmad/scripts/resolve_customization.py --skill .claude/skills/bmad-quick-dev --key workflow)"
+      "Bash(python3 _bmad/scripts/resolve_customization.py --skill .claude/skills/bmad-quick-dev --key workflow)",
+      "Bash(python _bmad/scripts/resolve_customization.py --skill .claude/skills/bmad-investigate --key workflow)",
+      "Bash(sed 's/\\\\\\(DB_USER=\\\\\\).*/\\\\1***/')",
+      "Bash(python _bmad/scripts/resolve_customization.py --skill .claude/skills/bmad-quick-dev --key workflow)",
+      "Bash(SSE_SECRET='testsecret' node *)"
     ]
   },
   "enabledPlugins": {

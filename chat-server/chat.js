@@ -2,6 +2,13 @@
 const express  = require('express');
 const oracledb = require('oracledb');
 const { deliverToUser } = require('./events');
+const registry = require('./db-registry');
+
+// Chat hiện chạy trên 1 schema → deliver ở dbKey mặc định (nhất quán với CQN 1-DB).
+// TODO(multi-db): khi chat.js chọn pool theo dbKey, truyền dbKey thật vào deliverToConv.
+// LƯU Ý: DEFAULT_DB_KEY (namespace SSE, khớp token cũ) TÁCH BIỆT với pool primary
+// của registry (chọn DB để query) — hai khái niệm khác nhau.
+const DEFAULT_DB_KEY = process.env.DEFAULT_DB_KEY || 'default';
 
 const router = express.Router();
 
@@ -21,7 +28,8 @@ const ONLINE_CACHE_TTL      = 30_000;   // 30s — cache online list, tránh Ora
 // ─── Utilities ───────────────────────────────────────────────────────────────
 
 async function withConn(fn) {
-  const conn = await oracledb.getPool().getConnection();
+  // TODO(multi-db): chọn pool theo dbKey của request; hiện dùng primary.
+  const conn = await registry.getPool().getConnection();
   try {
     return await fn(conn);
   } finally {
@@ -61,7 +69,7 @@ async function deliverToConv(convId, payload, excludeAusId) {
   const ausIds = await getParticipants(convId);
   const exclude = Number(excludeAusId);
   for (const ausId of ausIds) {
-    if (Number(ausId) !== exclude) deliverToUser(ausId, payload);
+    if (Number(ausId) !== exclude) deliverToUser(DEFAULT_DB_KEY, ausId, payload);
   }
 }
 

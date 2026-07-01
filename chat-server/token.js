@@ -4,7 +4,12 @@ const crypto = require('crypto');
 
 const SECRET = process.env.G_SSE_SECRET || process.env.SSE_SECRET || '';
 
-// token = base64url("<aus_id>|<exp_epoch_seconds>") + "." + base64url(HMAC_SHA256(body, SECRET))
+// dbKey namespaces identity per Oracle schema (aus_id sequences are per-schema).
+// Token cũ 2 phần (aus_id|exp) map về DEFAULT_DB_KEY để không buộc client login lại.
+const DEFAULT_DB_KEY = process.env.DEFAULT_DB_KEY || 'default';
+
+// token = base64url("<dbKey>|<aus_id>|<exp_epoch_seconds>") + "." + base64url(HMAC_SHA256(body, SECRET))
+// Tương thích ngược: body 2 phần "<aus_id>|<exp>" → dbKey = DEFAULT_DB_KEY.
 function verifyToken(token) {
     if (!token || !SECRET) return null;
 
@@ -31,15 +36,24 @@ function verifyToken(token) {
     try { decoded = Buffer.from(body, 'base64url').toString(); }
     catch { return null; }
 
-    const [ausIdStr, expStr] = decoded.split('|');
-    if (!ausIdStr || !expStr) return null;
+    const parts = decoded.split('|');
+    let dbKey, ausIdStr, expStr;
+    if (parts.length === 3) {
+        [dbKey, ausIdStr, expStr] = parts;
+    } else if (parts.length === 2) {
+        [ausIdStr, expStr] = parts;
+        dbKey = DEFAULT_DB_KEY;
+    } else {
+        return null;
+    }
+    if (!dbKey || !ausIdStr || !expStr) return null;
 
     const exp   = Number(expStr);
     const ausId = Number(ausIdStr);
     if (!Number.isFinite(exp) || !Number.isFinite(ausId)) return null;
     if (Date.now() / 1000 > exp) return null;
 
-    return { ausId };
+    return { dbKey, ausId };
 }
 
 module.exports = { verifyToken };

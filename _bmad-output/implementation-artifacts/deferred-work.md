@@ -10,3 +10,10 @@
 **Nguồn:** điều tra cqn-realtime-loss (2026-06-30).
 - DBA cấp `GRANT EXECUTE ON DBMS_CQ_NOTIFICATION TO DEV24` rồi `DEREGISTER` reg mồ côi 35104 (callback .38). Không bắt buộc (reg .50 mới chạy song song) nhưng nên dọn.
 - Sửa docs ghi sai Server B = 172.25.10.38 → đúng là **172.25.10.50** (CLAUDE.md, docs/cqn-setup-guide.md, docs/oracle-db.md DB_CONNECTION_STRING context).
+
+## From: spec-namespace-dbkey-sse (2026-07-01)
+**Nguồn:** review bước 1 Giai đoạn 2 (namespacing dbKey). Xem `chat-server/docs/multi-db-research.md`.
+- **DRY `DEFAULT_DB_KEY`**: hằng `process.env.DEFAULT_DB_KEY || 'default'` định nghĩa độc lập ở 3 nơi (`token.js`, `events.js`, `chat.js`). An toàn vì cùng nguồn env, nhưng khi tách CQN worker nên gom về 1 module config để tránh drift. Mức: thấp.
+- **notifyUser thứ tự tham số ngược** (`ausId, dbKey`) so với `deliverToUser`/`registerSSE` (`dbKey, ausId`). Cố ý để giữ chữ ký `_emitFn(ausId)` của CQN; thống nhất lại khi tách worker (worker truyền dbKey thật).
+- **APEX `sseToken` (page 0)**: nhúng `dbKey` vào token body 3-phần khi mint (client hiện dùng token 2-phần → chạy nhờ tương thích ngược `default`). Phạm vi paste tay APEX, làm ở bước multi-DB thật.
+- (Trùng hướng) "Tách CQN sang process riêng" (mục trên, 2026-06-30) = đúng **Phương án C** đã chốt 2026-07-01.

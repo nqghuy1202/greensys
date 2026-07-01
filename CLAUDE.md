@@ -87,6 +87,7 @@ CQN dùng **2 kênh**: control (outbound Node→Oracle `1521`, để subscribe) 
 | SSE Migration (real-time) | ✅ Done — 4 phase hoàn thành 2026-06-09 |
 | Menu Tree IG (page 10012010203) | ✅ Done — `docs/menu-tree-ig-setup.md` |
 | Kanban Board dynamic columns | ✅ Done — `template_component_plugin_kanban_board (1).sql` |
+| Multi-DB real-time hub | 🚧 Active — code xong, chưa deploy; `chat-server/docs/multi-db-research.md` |
 | CRM Module (KHTN) | 📋 Planned — `docs/crm.md` |
 
 ## Shared Docs

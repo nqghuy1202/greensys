@@ -9,6 +9,7 @@ const { startCQN, stopCQN }               = require('./cqn');
 const { router: chatRouter }              = require('./chat');
 const { notifyUser, drainAll, registerSSE } = require('./events');
 const { verifyToken } = require('./token');
+const registry = require('./db-registry');
 
 oracledb.initOracleClient();
 
@@ -35,19 +36,11 @@ app.use((req, res, next) => {
     next();
 });
 
+// Pool khởi tạo động từ db-registry.json (mọi DB, poolAlias=key, events:true).
+// Xem db-registry.js. CQN hiện chạy trên primary DB; worker-split (Phương án C)
+// là bước sau, sẽ dùng registry.cqnDbs().
 async function initDB() {
-    await oracledb.createPool({
-        user:          process.env.DB_USER,
-        password:      process.env.DB_PASSWORD,
-        connectString: process.env.DB_CONNECTION_STRING,
-        events:        true,   // BẮT BUỘC: thick mode quyết định events-mode của OCI env
-                               // theo pool/connection ĐẦU TIÊN. Pool tạo trước startCQN,
-                               // thiếu cờ này → CQN listener fail ORA-24912 (bọc NJS-003).
-        poolMin:       Number(process.env.DB_POOL_MIN)       || 2,
-        poolMax:       Number(process.env.DB_POOL_MAX)       || 10,
-        poolIncrement: Number(process.env.DB_POOL_INCREMENT) || 1,
-    });
-    console.log('[DB] Connection pool created');
+    await registry.initPools();
 }
 
 // ──────────────────────────────────────────────
@@ -84,7 +77,7 @@ app.get('/api/sse', (req, res) => {
     const parsed = verifyToken(token);
     if (!parsed) return res.status(401).json({ error: 'invalid_token' });
 
-    const { ausId } = parsed;
+    const { dbKey, ausId } = parsed;
 
     res.set({
         'Content-Type':                'text/event-stream',
@@ -95,7 +88,7 @@ app.get('/api/sse', (req, res) => {
     });
     res.flushHeaders();
 
-    registerSSE(ausId, res, req.query.lastEventId || req.headers['last-event-id']);
+    registerSSE(dbKey, ausId, res, req.query.lastEventId || req.headers['last-event-id']);
 
     // Heartbeat chống proxy idle-timeout
     const ping = setInterval(() => {
@@ -109,7 +102,7 @@ app.get('/api/sse', (req, res) => {
         sseIntervals.delete(ping);
     });
 
-    console.log('[SSE] connect aus_id=%s', ausId);
+    console.log('[SSE] connect %s:%s', dbKey, ausId);
 });
 
 
@@ -123,8 +116,8 @@ function shutdown(signal) {
     drainAll();
     stopCQN().catch(() => {});
     server.close(() => {
-        oracledb.getPool().close(10)
-            .then(() => { console.log('[Server] Pool closed'); process.exit(0); })
+        registry.closeAll(10)
+            .then(() => { console.log('[Server] Pools closed'); process.exit(0); })
             .catch(() => process.exit(1));
     });
     setTimeout(() => process.exit(1), 15_000).unref();

@@ -3,16 +3,21 @@
 const BUFFER_MAX = 100;
 const BUFFER_TTL = 60_000;
 
+// Định danh SSE namespace theo schema: mỗi schema Oracle có dãy aus_id riêng nên
+// key phải là "<dbKey>:<ausId>" để user cùng aus_id ở 2 schema không đụng nhau.
+const DEFAULT_DB_KEY = process.env.DEFAULT_DB_KEY || 'default';
+const keyOf = (dbKey, ausId) => String(dbKey) + ':' + String(ausId);
+
 // Event types được buffer để replay khi SSE reconnect
 const BUFFERABLE = new Set(['message', 'read', 'notification']);
 
-// aus_id(string) → res  (1 SSE conn/user; conn mới đẩy conn cũ ra)
+// "dbKey:aus_id" → res  (1 SSE conn/user; conn mới đẩy conn cũ ra)
 const sseConnections = new Map();
 
 // seq tăng dần — gắn vào mỗi SSE event để client dùng Last-Event-ID replay
 let sseSeq = 0;
 
-// aus_id(string) → [{ seq, payload, expiresAt }]
+// "dbKey:aus_id" → [{ seq, payload, expiresAt }]
 const eventBuffer = new Map();
 
 function pruneBuffer(key) {
@@ -45,8 +50,8 @@ function sseWrite(res, seq, payload) {
     } catch (_) { /* conn đã đóng */ }
 }
 
-function registerSSE(ausId, res, lastEventId) {
-    const key = String(ausId);
+function registerSSE(dbKey, ausId, res, lastEventId) {
+    const key = keyOf(dbKey, ausId);
 
     // Đẩy conn cũ ra
     const old = sseConnections.get(key);
@@ -67,8 +72,8 @@ function registerSSE(ausId, res, lastEventId) {
     });
 }
 
-function deliverToUser(ausId, payload) {
-    const key    = String(ausId);
+function deliverToUser(dbKey, ausId, payload) {
+    const key    = keyOf(dbKey, ausId);
     const sseRes = sseConnections.get(key);
 
     if (sseRes) {
@@ -88,9 +93,11 @@ function deliverToUser(ausId, payload) {
     if (BUFFERABLE.has(payload.type)) bufferEvent(key, payload);
 }
 
-function notifyUser(ausId) {
-    deliverToUser(String(ausId), { type: 'notification' });
-    console.log('[Events] notification → aus_id=%s', ausId);
+// dbKey optional để chữ ký startCQN(notifyUser) → _emitFn(ausId) 1 tham số không vỡ.
+// TODO(worker-split): khi tách CQN worker/instance, worker phải truyền dbKey thật.
+function notifyUser(ausId, dbKey = DEFAULT_DB_KEY) {
+    deliverToUser(dbKey, String(ausId), { type: 'notification' });
+    console.log('[Events] notification → %s:%s', dbKey, ausId);
 }
 
 function drainAll() {

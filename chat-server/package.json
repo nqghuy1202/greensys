@@ -6,6 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:connection": "node test-connection.js",
+    "test:registry": "node test-registry.js",
     "test:cqn": "node test-cqn.js"
   },
   "keywords": [],
